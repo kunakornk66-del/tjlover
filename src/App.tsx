@@ -69,13 +69,6 @@ export default function App() {
   const [loginAvatar, setLoginAvatar] = useState('🐻');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  // Customizable Google Client ID (to solve "Access Blocked / Error 400" due to unauthorized origin)
-  const [googleClientId, setGoogleClientId] = useState<string>(() => {
-    return localStorage.getItem('custom_google_client_id') || ((import.meta as any).env?.VITE_GOOGLE_CLIENT_ID as string) || '955428006827-example.apps.googleusercontent.com';
-  });
-  const [showClientIdConfig, setShowClientIdConfig] = useState(false);
-  const [tempClientId, setTempClientId] = useState('');
-
   // Local state for Couple Setup
   const [setupMode, setSetupMode] = useState<'create' | 'join'>('create');
   const [partnerEmail, setPartnerEmail] = useState('');
@@ -202,52 +195,6 @@ export default function App() {
       setIsLoggingIn(false);
     }
   };
-
-  // Google Sign-In setup inside iframe and external tab fallback
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const initGsi = () => {
-        if ((window as any).google?.accounts?.id) {
-          try {
-            (window as any).google.accounts.id.initialize({
-              client_id: googleClientId,
-              callback: (response: any) => {
-                const payload = decodeJwt(response.credential);
-                if (payload && payload.email) {
-                  handleLogin(payload.email, payload.name, payload.picture);
-                }
-              },
-            });
-            const btnContainer = document.getElementById('google-signin-btn');
-            if (btnContainer) {
-              btnContainer.innerHTML = ''; // Clear old button container to avoid duplicates
-              (window as any).google.accounts.id.renderButton(btnContainer, {
-                theme: 'outline',
-                size: 'large',
-                shape: 'pill',
-                text: 'signin_with',
-              });
-            }
-          } catch (e) {
-            console.error('GSI Init Error:', e);
-          }
-        }
-      };
-
-      // Check if library already loaded, otherwise listen for load
-      if ((window as any).google?.accounts?.id) {
-        initGsi();
-      } else {
-        const timer = setInterval(() => {
-          if ((window as any).google?.accounts?.id) {
-            initGsi();
-            clearInterval(timer);
-          }
-        }, 1000);
-        return () => clearInterval(timer);
-      }
-    }
-  }, [currentUser, googleClientId]);
 
   // Periodical long polling for real-time chat & data updates
   useEffect(() => {
@@ -623,7 +570,7 @@ export default function App() {
               </p>
             </div>
 
-            {/* Gmail Manual Login Form */}
+            {/* Simple Email Login Form */}
             <form 
               onSubmit={(e) => {
                 e.preventDefault();
@@ -632,142 +579,56 @@ export default function App() {
                   handleLogin(loginEmail.trim(), derivedName);
                 }
               }} 
-              className="space-y-3 text-left bg-[#FFF9F5] p-4 rounded-2xl border border-[#F0E6DD]"
+              className="space-y-4 text-left bg-[#FFF9F5] p-5 sm:p-6 rounded-2xl border border-[#F0E6DD]"
             >
-              <div className="flex items-center gap-1.5 mb-1 justify-center">
-                <span className="w-5 h-5 bg-[#FFEFEF] rounded-full flex items-center justify-center text-xs text-[#FF8E8E]">📧</span>
-                <p className="text-xs font-black text-[#5D4E4E] tracking-tight">เข้าใช้งานด้วยอีเมล Gmail ของท่าน</p>
+              <div className="flex items-center gap-2 mb-2 justify-center">
+                <span className="w-6 h-6 bg-[#FFEFEF] rounded-full flex items-center justify-center text-xs text-[#FF8E8E]">💌</span>
+                <p className="text-sm font-black text-[#5D4E4E] tracking-tight">เข้าใช้งานด้วยอีเมลของคุณ</p>
               </div>
-              <div className="space-y-2">
+              
+              <div className="space-y-3">
                 <div>
-                  <label className="block text-[10px] font-bold text-[#A89090] uppercase mb-0.5">อีเมล Gmail ของจริง:</label>
+                  <label className="block text-[11px] font-bold text-[#A89090] uppercase mb-1">กรอกอีเมลของคุณหรือของแฟน:</label>
                   <input
                     type="email"
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
                     placeholder="เช่น sweet-couple@gmail.com"
-                    className="w-full text-xs p-2.5 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E] font-medium placeholder:text-gray-300"
+                    className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] focus:ring-1 focus:ring-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E] font-medium placeholder:text-gray-300 shadow-2xs"
                     required
                   />
                 </div>
               </div>
+
               <button
                 type="submit"
                 disabled={isLoggingIn}
-                className="w-full py-2.5 bg-[#FF8E8E] hover:bg-[#FF8E8E]/90 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-all active:scale-[0.98]"
+                className="w-full py-3 bg-[#FF8E8E] hover:bg-[#FF8E8E]/90 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-all active:scale-[0.98]"
               >
-                {isLoggingIn ? 'กำลังเข้าห้องความรัก...' : 'เข้าสู่ระบบ Gmail ของสองเรา 💖'}
+                {isLoggingIn ? 'กำลังเข้าห้องความรัก...' : 'เข้าสู่ระบบห้องของสองเรา 💖'}
               </button>
+
+              <div className="bg-white p-3 rounded-xl border border-[#F0E6DD]/60 text-[11px] text-gray-500 leading-relaxed space-y-1">
+                <p className="font-extrabold text-[#FF8E8E] flex items-center gap-1">
+                  <span>💡</span> แฟนเข้าคู่กันยังไง?
+                </p>
+                <p>
+                  เมื่อคุณสร้างพื้นที่คู่รักเรียบร้อยแล้ว แฟนของคุณเพียงพิมพ์อีเมลของตัวเองในช่องนี้ ก็จะเชื่อมต่อเข้ามายังหน้านี้และแชร์บันทึกรักร่วมกันได้ทันทีค่ะ!
+                </p>
+              </div>
             </form>
-
-            {/* Google Identity Services Real Sign-In Container */}
-            <div className="space-y-3 bg-[#FAF8F6] p-4 rounded-2xl border border-[#F0E6DD]/60">
-              <p className="text-[10px] font-extrabold text-[#5D4E4E] uppercase tracking-wider">หรือเชื่อมต่อด่วนด้วย Google One Tap</p>
-              <div className="flex justify-center py-1">
-                <div id="google-signin-btn" className="inline-block"></div>
-              </div>
-
-              {/* Troubleshooting block for "Access Blocked" / Google Origin mismatch */}
-              <div className="pt-2 border-t border-[#F0E6DD]/60">
-                <button
-                  type="button"
-                  id="btn-toggle-client-id-info"
-                  onClick={() => {
-                    setTempClientId(googleClientId);
-                    setShowClientIdConfig(!showClientIdConfig);
-                  }}
-                  className="text-[10px] text-rose-500 hover:text-rose-600 font-extrabold flex items-center justify-center gap-1 mx-auto transition-colors focus:outline-hidden"
-                >
-                  {showClientIdConfig ? '✖ ปิดการตั้งค่า' : '❓ เข้าสู่ระบบด้วย Google ขึ้นบล็อก (Access Blocked) แก้ไขยังไง?'}
-                </button>
-
-                {showClientIdConfig && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    className="mt-3 text-left space-y-3 text-[11px] text-[#5D4E4E] bg-white p-3.5 rounded-xl border border-[#F0E6DD] leading-relaxed"
-                  >
-                    <p className="font-extrabold text-[#FF8E8E] text-[11px]">
-                      ทำไมขึ้น "การเข้าถึงถูกบล็อก" (Access Blocked)?
-                    </p>
-                    <p className="text-gray-500 text-[10px]">
-                      เนื่องจากแอปนี้ทำงานบน URL ชั่วคราวของคุณ เพื่อความปลอดภัยสูงสุด Google จึงบังคับให้ใช้ <strong>Google Client ID ของคุณเอง</strong> ที่มีการตั้งค่าอนุญาตที่มาของเว็บไซต์ (Authorized Origins) เท่านั้นค่ะ!
-                    </p>
-
-                    <div className="bg-amber-50 border border-amber-200 text-amber-800 p-2.5 rounded-lg text-[9px] space-y-1">
-                      <p className="font-extrabold">📌 ขั้นตอนแก้ไขใน 3 นาที:</p>
-                      <ol className="list-decimal pl-3 space-y-1">
-                        <li>ไปที่ <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="underline font-bold text-[#FF8E8E]">Google Cloud Console</a> แล้วสร้าง OAuth Client ID สำหรับ Web Application</li>
-                        <li>ใส่ URL ของแอปนี้ลงในช่อง <strong>Authorized JavaScript origins</strong>: <br />
-                          <code className="bg-white px-1 py-0.5 rounded border font-mono select-all text-[11px] font-semibold block mt-1 break-all">
-                            {typeof window !== 'undefined' ? window.location.origin : 'https://ais-dev-lomcjwpka32nadx2p7pgis-955428006827.asia-southeast1.run.app'}
-                          </code>
-                        </li>
-                        <li>ก็อปปี้ Client ID ที่ได้มาวางในช่องด้านล่างนี้ และกดบันทึกความทรงจำได้เลยค่ะ!</li>
-                      </ol>
-                    </div>
-
-                    <div className="space-y-1.5 pt-1">
-                      <label className="block font-bold text-[10px] text-[#A89090]">ใส่ Google Client ID ของคุณเอง:</label>
-                      <input
-                        type="text"
-                        id="input-custom-client-id"
-                        value={tempClientId}
-                        onChange={(e) => setTempClientId(e.target.value.trim())}
-                        placeholder="xxxxxxxxxx.apps.googleusercontent.com"
-                        className="w-full text-[10px] p-2 rounded-lg border border-[#F0E6DD] font-mono focus:border-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E]"
-                      />
-                      <div className="flex gap-2 justify-end pt-1">
-                        {googleClientId !== '955428006827-example.apps.googleusercontent.com' && (
-                          <button
-                            type="button"
-                            id="btn-reset-client-id"
-                            onClick={() => {
-                              localStorage.removeItem('custom_google_client_id');
-                              setGoogleClientId('955428006827-example.apps.googleusercontent.com');
-                              setTempClientId('955428006827-example.apps.googleusercontent.com');
-                              triggerNotification('คืนค่า Google Client ID เริ่มต้นเรียบร้อยแล้วค่ะ! 🐻', 'info');
-                              setShowClientIdConfig(false);
-                            }}
-                            className="px-2.5 py-1.5 text-[10px] bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold rounded-lg cursor-pointer transition-colors"
-                          >
-                            คืนค่าเริ่มต้น
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          id="btn-save-client-id"
-                          onClick={() => {
-                            if (!tempClientId) {
-                              triggerNotification('กรุณากรอก Google Client ID ก่อนนะคะ! ⚠️', 'security');
-                              return;
-                            }
-                            localStorage.setItem('custom_google_client_id', tempClientId);
-                            setGoogleClientId(tempClientId);
-                            triggerNotification('อัปเดต Google Client ID เรียบร้อยแล้วค่ะ! ระบบกำลังโหลดปุ่มใหม่ 🌸', 'love');
-                            setShowClientIdConfig(false);
-                          }}
-                          className="px-3 py-1.5 text-[10px] bg-[#FF8E8E] hover:bg-[#FF8E8E]/90 text-white font-extrabold rounded-lg cursor-pointer transition-colors"
-                        >
-                          บันทึกการตั้งค่า ✨
-                        </button>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </div>
-            </div>
 
             <div className="relative flex items-center justify-center">
               <div className="absolute w-full border-t border-[#F0E6DD]"></div>
               <span className="relative bg-white px-3 text-[10px] font-bold text-[#A89090] uppercase tracking-widest">
-                หรือ เข้าใช้แบบจำลองความเร่งด่วน
+                หรือ เข้าใช้แบบจำลองด่วน
               </span>
             </div>
 
             {/* Instant login fallback with no inputs */}
             <div className="space-y-4">
               <button
+                type="button"
                 onClick={() => handleLogin('couple.simulated@gmail.com', 'คุณหมีน้อย 🐻')}
                 disabled={isLoggingIn}
                 className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-[#5D4E4E] border border-[#F0E6DD] font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-[0.98]"
