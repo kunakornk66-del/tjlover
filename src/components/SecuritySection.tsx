@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, Cloud, Download, Upload, CheckCircle2, Lock, Key, RefreshCw, AlertTriangle, FileJson, LogOut, User, Link, Trash2, ShieldAlert, Copy } from 'lucide-react';
+import { Shield, Cloud, Download, Upload, CheckCircle2, Lock, Key, RefreshCw, AlertTriangle, FileJson, LogOut, User, Link, Trash2, ShieldAlert, Copy, Bell } from 'lucide-react';
 import { Memory, ChatMessage, CalendarEvent, MoodLog, RelationshipInfo, CurrentUser, Couple } from '../types';
 
 interface SecuritySectionProps {
@@ -21,6 +21,8 @@ interface SecuritySectionProps {
   onLogout: () => void;
   onUpdatePartnerEmail: (partnerEmail: string) => Promise<void>;
   onResetFactory: () => Promise<void>;
+  notificationPermission?: string;
+  onRequestNotificationPermission?: () => void;
 }
 
 export default function SecuritySection({
@@ -36,6 +38,8 @@ export default function SecuritySection({
   onLogout,
   onUpdatePartnerEmail,
   onResetFactory,
+  notificationPermission = 'default',
+  onRequestNotificationPermission = () => {},
 }: SecuritySectionProps) {
   const [passphrase, setPassphrase] = useState('LOVEMYPARTNER1314');
   const [isSyncing, setIsSyncing] = useState(false);
@@ -492,6 +496,76 @@ export default function SecuritySection({
                 <p className="text-[9px] text-gray-400 mt-1">ผู้ที่ลงทะเบียนคนแรก (เจ้าของสิทธิ์) จะเป็นคนสามารถแก้ไขอีเมลเชื่อมคู่รักได้ค่ะ</p>
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Browser Notifications Settings */}
+        <div className="kawaii-card p-5 bg-white space-y-4">
+          <div className="flex items-center gap-2.5 mb-2">
+            <span className="p-2.5 bg-rose-50 rounded-full text-rose-500">
+              <Bell className="w-5 h-5" />
+            </span>
+            <div>
+              <h3 className="font-bold text-[#5D4E4E] text-sm">การแจ้งเตือนบนเบราว์เซอร์ (Push Notifications) 🔔</h3>
+              <p className="text-xs text-[#A89090]">แจ้งเตือนคุณแบบเรียลไทม์เมื่อแฟนส่งข้อความใหม่หรือเพิ่มกิจกรรมในปฏิทิน</p>
+            </div>
+          </div>
+
+          <div className="p-4 bg-rose-50/20 border border-rose-100 rounded-2xl space-y-3.5">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-[#F0E6DD]">
+              <div>
+                <p className="text-xs font-bold text-[#5D4E4E]">สถานะการเปิดสิทธิ์การแจ้งเตือน:</p>
+                <div className="flex items-center gap-1.5 mt-1">
+                  {notificationPermission === 'granted' ? (
+                    <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-emerald-200">
+                      <CheckCircle2 className="w-3 h-3" /> เปิดใช้งานแล้ว
+                    </span>
+                  ) : notificationPermission === 'denied' ? (
+                    <span className="inline-flex items-center gap-1 bg-rose-50 text-rose-700 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-rose-200">
+                      <AlertTriangle className="w-3 h-3" /> ถูกปฏิเสธสิทธิ์
+                    </span>
+                  ) : notificationPermission === 'unsupported' ? (
+                    <span className="inline-flex items-center gap-1 bg-gray-50 text-gray-700 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-gray-200">
+                      <AlertTriangle className="w-3 h-3" /> ไม่รองรับบนอุปกรณ์นี้
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-amber-200">
+                      🔔 ยังไม่ได้เปิดสิทธิ์
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {notificationPermission !== 'unsupported' && (
+                <button
+                  type="button"
+                  onClick={onRequestNotificationPermission}
+                  disabled={notificationPermission === 'granted'}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer active:scale-95 flex items-center gap-1 shrink-0 ${
+                    notificationPermission === 'granted'
+                      ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-default'
+                      : 'bg-[#FF8E8E] hover:bg-[#FF8E8E]/85 text-white shadow-xs'
+                  }`}
+                >
+                  <Bell className="w-3.5 h-3.5" />
+                  <span>{notificationPermission === 'granted' ? 'เปิดใช้งานแล้ว' : 'อนุญาตสิทธิ์แจ้งเตือน 🔔'}</span>
+                </button>
+              )}
+            </div>
+
+            <div className="text-[11px] text-[#5D4E4E] leading-relaxed font-semibold">
+              <p>💡 <strong>การแจ้งเตือนบนเบราว์เซอร์จะเตือนคุณเมื่อ:</strong></p>
+              <ul className="list-disc pl-4.5 space-y-1 mt-1 text-[#A89090]">
+                <li>แจ้งเตือนทันทีเมื่อหวานใจส่งข้อความแชทใหม่หาคุณ 💕</li>
+                <li>แจ้งเตือนทันทีเมื่อแฟนเขียนบันทึก/เพิ่มกิจกรรมใหม่ลงในปฏิทินแชร์รัก 📅</li>
+                <li>ทำงานได้ดีแม้จะย่อเบราว์เซอร์หรือสลับไปทำงานแท็บอื่น</li>
+              </ul>
+              {notificationPermission === 'denied' && (
+                <p className="mt-2 text-rose-600 font-bold bg-rose-50 p-2.5 rounded-xl border border-rose-100 text-xs">
+                  ⚠️ ปัจจุบันสิทธิ์การแจ้งเตือนถูกปิดอยู่ หากต้องการเปิดใช้งาน กรุณากดปุ่มไอคอนรูปแม่กุญแจ (Lock) บนแถบป้อนที่อยู่เว็บ (URL) ของคุณ และปรับแต่งสิทธิ์ของเว็บนี้เพื่อเปิดอนุญาต "การแจ้งเตือน (Notifications)" นะคะ!
+                </p>
+              )}
+            </div>
           </div>
         </div>
 

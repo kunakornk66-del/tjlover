@@ -118,7 +118,7 @@ function saveDB(db: DB) {
 
 // Generate random pairing code (LOVE-XXXX)
 function generatePairingCode(): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  const chars = "ACDEFGHJKLMNPQRTUVWXY34679";
   let code = "LOVE-";
   for (let i = 0; i < 4; i++) {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -231,12 +231,17 @@ app.post("/api/auth/login-username", (req, res) => {
     couple = db.couples[user.coupleId];
   } else {
     const foundCouple = Object.values(db.couples).find(
-      (c) => c.partnerEmail?.toLowerCase() === user.email.toLowerCase()
+      (c) => {
+        if (!c.partnerEmail) return false;
+        const cleanedPart = c.partnerEmail.toLowerCase().trim();
+        return cleanedPart === user.email.toLowerCase().trim() || 
+               cleanedPart === user.username?.toLowerCase().trim();
+      }
     );
     if (foundCouple) {
       user.coupleId = foundCouple.id;
       couple = foundCouple;
-      db.users[user.email] = user;
+      db.users[user.email.toLowerCase().trim()] = user;
       saveDB(db);
     }
   }
@@ -256,6 +261,10 @@ app.post("/api/auth/login", (req, res) => {
 
   let user = db.users[cleanedEmail];
   if (!user) {
+    // If it's a mock app.com email, DO NOT auto-create it!
+    if (cleanedEmail.endsWith("@app.com")) {
+      return res.status(401).json({ error: "ไม่พบข้อมูลผู้ใช้งานนี้ในระบบ กรุณาเข้าสู่ระบบใหม่อีกครั้งค่ะ" });
+    }
     user = {
       email: cleanedEmail,
       name: name || email.split("@")[0],
@@ -272,7 +281,12 @@ app.post("/api/auth/login", (req, res) => {
   } else {
     // Check if another user added them as partner
     const foundCouple = Object.values(db.couples).find(
-      (c) => c.partnerEmail?.toLowerCase() === cleanedEmail
+      (c) => {
+        if (!c.partnerEmail) return false;
+        const cleanedPart = c.partnerEmail.toLowerCase().trim();
+        return cleanedPart === cleanedEmail || 
+               cleanedPart === user.username?.toLowerCase().trim();
+      }
     );
     if (foundCouple) {
       user.coupleId = foundCouple.id;
@@ -354,7 +368,7 @@ app.post("/api/couple/set-partner", (req, res) => {
   res.json({ couple });
 });
 
-// 4. Join an existing Couple Space using Pairing Code (Partner)
+// 4. Join an existing Couple Space using Pairing Code (Partner) or Partner's Username/Email
 app.post("/api/couple/join", (req, res) => {
   const { email, pairingCode } = req.body;
   if (!email || !pairingCode) {
@@ -364,27 +378,36 @@ app.post("/api/couple/join", (req, res) => {
   const db = loadDB();
   const cleanedEmail = email.toLowerCase().trim();
   
-  // Normalize code: remove all spaces, make uppercase, replace dashes temporarily to parse
-  let cleanedCode = pairingCode.toUpperCase().replace(/\s+/g, "").trim();
-  
-  // If user only types the 4 characters (e.g. "MGPH"), prepend "LOVE-"
-  if (cleanedCode.length === 4) {
-    cleanedCode = "LOVE-" + cleanedCode;
-  } 
-  // If user types "LOVEMGPH" (8 chars, starts with LOVE), format it to "LOVE-MGPH"
-  else if (cleanedCode.length === 8 && cleanedCode.startsWith("LOVE")) {
-    cleanedCode = "LOVE-" + cleanedCode.substring(4);
-  }
-
   const user = findUserInDB(db, cleanedEmail);
   if (!user) {
     return res.status(404).json({ error: "ไม่พบข้อมูลผู้ใช้งานที่พยายามเชื่อมต่อในระบบฐานข้อมูลค่ะ (เคล็ดลับ: กรุณาตรวจสอบว่าคุณล็อกอินด้วยชื่อผู้ใช้ที่สมัครแล้วเสร็จสมบูรณ์นะคะ)" });
   }
 
-  // Find the couple with the given pairing code
-  const couple = Object.values(db.couples).find((c) => c.pairingCode.toUpperCase().trim() === cleanedCode);
+  // Normalize code
+  let cleanedCode = pairingCode.toUpperCase().replace(/\s+/g, "").trim();
+  
+  if (cleanedCode.length === 4) {
+    cleanedCode = "LOVE-" + cleanedCode;
+  } 
+  else if (cleanedCode.length === 8 && cleanedCode.startsWith("LOVE")) {
+    cleanedCode = "LOVE-" + cleanedCode.substring(4);
+  }
+
+  // 1. Try to find the couple by pairing code first
+  let couple = Object.values(db.couples).find((c) => c.pairingCode.toUpperCase().trim() === cleanedCode);
+
+  // 2. If not found, try to search pairingCode as a Username or Email of the partner
   if (!couple) {
-    return res.status(404).json({ error: "รหัสโปรแกรมคู่รักไม่ถูกต้อง กรุณาตรวจสอบอีกครั้งค่ะ (เคล็ดลับ: สามารถพิมพ์รหัส 4 ตัวหลัง เช่น MGPH ได้เช่นกันค่ะ)" });
+    const partnerUser = findUserInDB(db, pairingCode);
+    if (partnerUser && partnerUser.coupleId && db.couples[partnerUser.coupleId]) {
+      couple = db.couples[partnerUser.coupleId];
+    }
+  }
+
+  if (!couple) {
+    return res.status(404).json({ 
+      error: "ไม่พบห้องคู่รักจากข้อมูลที่ระบุค่ะ กรุณาตรวจสอบรหัสโปรแกรมคู่รัก (เช่น MGPH), ชื่อผู้ใช้งานของแฟน (เช่น kunakorn) หรืออีเมลของแฟนคุณอีกครั้งนะคะ" 
+    });
   }
 
   // Bind partner email and link the user

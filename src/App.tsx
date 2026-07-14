@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Heart, Sparkles, LogIn, Lock, Bell, CheckCircle2, User, Smile, MessageCircle, Calendar, ShieldCheck, HeartHandshake, LogOut, ArrowRight, Compass, Settings, ShieldAlert } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -121,13 +121,115 @@ export default function App() {
     }, 5000);
   };
 
+  // Refs to prevent stale closures and track previous data for browser notifications
+  const messagesRef = useRef<ChatMessage[]>([]);
+  const eventsRef = useRef<CalendarEvent[]>([]);
+  const activeUserRef = useRef<'user' | 'partner'>('user');
+  const relationshipInfoRef = useRef<RelationshipInfo>(relationshipInfo);
+  const isInitialChatsLoaded = useRef(false);
+  const isInitialEventsLoaded = useRef(false);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    eventsRef.current = events;
+  }, [events]);
+
+  useEffect(() => {
+    activeUserRef.current = activeUser;
+  }, [activeUser]);
+
+  useEffect(() => {
+    relationshipInfoRef.current = relationshipInfo;
+  }, [relationshipInfo]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      isInitialChatsLoaded.current = false;
+      isInitialEventsLoaded.current = false;
+    }
+  }, [currentUser]);
+
+  // Browser Notification state & support check
+  const [notificationPermission, setNotificationPermission] = useState<string>(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      return Notification.permission;
+    }
+    return 'unsupported';
+  });
+
+  const requestNotificationPermission = async () => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      triggerNotification('⚠️ เบราว์เซอร์ของคุณไม่รองรับการแจ้งเตือนแบบพุชค่ะ', 'info');
+      return;
+    }
+    try {
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+      if (permission === 'granted') {
+        triggerNotification('🔔 เปิดการแจ้งเตือนบนเบราว์เซอร์สำเร็จแล้วค่ะ!', 'love');
+        try {
+          new Notification('💖 เปิดใช้งานการแจ้งเตือนสำเร็จ!', {
+            body: 'ระบบจะส่งสัญญาณเมื่อแฟนของคุณส่งข้อความหรือเพิ่มกิจกรรมในปฏิทินนะคะ',
+            icon: 'https://cdn-icons-png.flaticon.com/512/3659/3659902.png',
+          });
+        } catch (err) {
+          console.warn('Could not trigger test notification:', err);
+        }
+      } else if (permission === 'denied') {
+        triggerNotification('⚠️ ถูกบล็อกสิทธิ์ กรุณาเปิดใช้งานสิทธิ์แจ้งเตือนในตั้งค่าเบราว์เซอร์นะคะ', 'info');
+      }
+    } catch (e) {
+      console.error('Error requesting notification permission:', e);
+    }
+  };
+
+  const sendBrowserNotification = (title: string, options?: NotificationOptions) => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (Notification.permission === 'granted') {
+      try {
+        new Notification(title, {
+          icon: 'https://cdn-icons-png.flaticon.com/512/3659/3659902.png',
+          ...options,
+        });
+      } catch (e) {
+        console.error('Error playing notification:', e);
+      }
+    }
+  };
+
   // 4. Synchronization and fetching from backend Express API
   const fetchCoupleData = async (coupleId: string) => {
     try {
       const res = await appFetch(`/api/chats/${coupleId}`);
       if (res.ok) {
         const chats = await res.json();
+        // Check for new messages from partner
+        if (isInitialChatsLoaded.current && messagesRef.current.length > 0) {
+          const existingIds = new Set(messagesRef.current.map((m) => m.id));
+          const newMsg = chats.filter((m: ChatMessage) => !existingIds.has(m.id) && m.senderId !== activeUserRef.current);
+          if (newMsg.length > 0) {
+            newMsg.forEach((msg: ChatMessage) => {
+              const partnerName = activeUserRef.current === 'user'
+                ? (relationshipInfoRef.current.partnerNickname || 'แฟนคุณ')
+                : (relationshipInfoRef.current.userNickname || 'แฟนคุณ');
+              
+              let contentText = msg.text;
+              if (msg.mediaType === 'sticker') contentText = 'ส่งสติกเกอร์รัก 🧸';
+              else if (msg.mediaType === 'photo') contentText = 'ส่งรูปภาพใหม่ 📸';
+              else if (msg.mediaType === 'video') contentText = 'ส่งวิดีโอใหม่ 🎥';
+
+              sendBrowserNotification(`💬 ข้อความใหม่จาก ${partnerName}`, {
+                body: contentText,
+                tag: `msg-${msg.id}`,
+              });
+            });
+          }
+        }
         setMessages(chats);
+        isInitialChatsLoaded.current = true;
       }
 
       const resMemories = await appFetch(`/api/memories/${coupleId}`);
@@ -139,7 +241,30 @@ export default function App() {
       const resEvents = await appFetch(`/api/events/${coupleId}`);
       if (resEvents.ok) {
         const evs = await resEvents.json();
+        // Check for new calendar events from partner
+        if (isInitialEventsLoaded.current && eventsRef.current.length > 0) {
+          const existingIds = new Set(eventsRef.current.map((e) => e.id));
+          const newEvs = evs.filter((e: CalendarEvent) => !existingIds.has(e.id) && e.creatorId !== activeUserRef.current);
+          if (newEvs.length > 0) {
+            newEvs.forEach((evt: CalendarEvent) => {
+              const partnerName = activeUserRef.current === 'user'
+                ? (relationshipInfoRef.current.partnerNickname || 'แฟนคุณ')
+                : (relationshipInfoRef.current.userNickname || 'แฟนคุณ');
+
+              let catEmoji = '📅';
+              if (evt.category === 'anniversary') catEmoji = '💖';
+              else if (evt.category === 'date') catEmoji = '🌹';
+              else if (evt.category === 'diary') catEmoji = '📖';
+
+              sendBrowserNotification(`${catEmoji} กิจกรรมใหม่จาก ${partnerName}`, {
+                body: `เพิ่มกิจกรรม: "${evt.title}" ในวันที่ ${evt.date}`,
+                tag: `evt-${evt.id}`,
+              });
+            });
+          }
+        }
         setEvents(evs);
+        isInitialEventsLoaded.current = true;
       }
 
       const resMoods = await appFetch(`/api/moods/${coupleId}`);
@@ -342,18 +467,8 @@ export default function App() {
     return result.join('');
   };
 
-  // Hash function with fallback
+  // Hash function - always use deterministic pure-JS fallback for 100% consistency across iframes and secure/non-secure browser contexts
   const computeHash = async (text: string): Promise<string> => {
-    try {
-      if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
-        const msgBuffer = new TextEncoder().encode(text);
-        const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-      }
-    } catch (e) {
-      console.warn('Crypto API not fully available, falling back to pure JS hash:', e);
-    }
     return sha256Fallback(text);
   };
 
@@ -1205,29 +1320,30 @@ export default function App() {
               <form onSubmit={handleJoinCouple} className="space-y-4">
                 <div className="text-center space-y-1 mb-2">
                   <h3 className="font-extrabold text-sm text-[#5D4E4E]">เข้าร่วมรังรักของหวานใจ 🔑</h3>
-                  <p className="text-[10px] text-[#A89090]">ใส่รหัสโปรแกรมที่แฟนแชร์มาเพื่อเข้าร่วมทันทีจ้า</p>
+                  <p className="text-[10px] text-[#A89090]">ใส่รหัสโปรแกรม หรือชื่อผู้ใช้งานของแฟนเพื่อเข้าร่วมทันทีจ้า</p>
                 </div>
 
                 <div className="bg-[#FFF9F5] border border-[#FFD9D9] rounded-xl p-3.5 text-[11px] text-[#A89090] space-y-2">
                   <p className="font-extrabold text-[#FF8E8E] flex items-center gap-1">
-                    <span>💡 ขั้นตอนการเชื่อมต่อสำหรับแฟน:</span>
+                    <span>💡 วิธีเชื่อมต่อกันที่ง่ายที่สุด:</span>
                   </p>
                   <ol className="list-decimal pl-4.5 space-y-1 font-semibold text-left">
-                    <li>ให้แฟนสมัครสมาชิกใหม่ก่อน (โดยใช้ไอดีและรหัสผ่านของแฟนเอง)</li>
-                    <li>หลังจากแฟนล็อกอินเข้ามาแล้ว ให้เลือกแท็บ <strong className="text-[#FF8E8E]">"เข้าร่วมพื้นที่เดิม 🔑"</strong> นี้</li>
-                    <li>กรอกรหัสห้อง (สามารถพิมพ์สั้นๆ แค่ 4 ตัวหลัง เช่น <strong className="text-[#FF8E8E]">MGPH</strong> หรือกรอกรหัสเต็ม <strong className="text-[#FF8E8E]">LOVE-MGPH</strong> ก็เข้าได้เหมือนกันค่ะ!)</li>
+                    <li>ให้แฟนสมัครสมาชิกและเข้าสู่ระบบก่อน</li>
+                    <li>หลังจากแฟนล็อกอินเข้ามาแล้ว แฟนจะสร้างห้องคู่รักขึ้นมา</li>
+                    <li>คุณเพียงแค่พิมพ์ <strong className="text-[#FF8E8E]">ชื่อผู้ใช้งาน (Username)</strong> ของแฟนคุณ หรือรหัสคู่รัก 4 ตัว (เช่น <strong className="text-[#FF8E8E]">MGPH</strong>) ก็เชื่อมต่อเข้ารักเดียวกันได้ทันทีโดยไม่ต้องจำรหัสยาวๆ เลยค่ะ!</li>
                   </ol>
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 mb-1">กรอกรหัสโปรแกรมคู่รัก (Pairing Code):</label>
+                  <label className="block text-[10px] font-bold text-gray-500 mb-1">กรอกรหัสคู่รัก หรือชื่อผู้ใช้ (Username) ของแฟนคุณ:</label>
                   <input
                     type="text"
                     value={pairingCodeInput}
-                    onChange={(e) => setPairingCodeInput(e.target.value.toUpperCase())}
-                    placeholder="เช่น MGPH หรือ LOVE-MGPH"
-                    className="w-full text-center text-sm font-black p-3.5 rounded-xl border-2 border-[#F0E6DD] focus:border-[#FF8E8E] outline-hidden bg-[#FFF9F5] text-[#FF8E8E] font-mono tracking-widest placeholder:text-gray-300"
+                    onChange={(e) => setPairingCodeInput(e.target.value)}
+                    placeholder="เช่น ชื่อผู้ใช้งานของแฟน หรือ LOVE-MGPH"
+                    className="w-full text-center text-sm font-black p-3.5 rounded-xl border-2 border-[#F0E6DD] focus:border-[#FF8E8E] outline-hidden bg-[#FFF9F5] text-[#FF8E8E] font-sans tracking-wide placeholder:text-gray-300 placeholder:font-normal"
                     required
+                    autoComplete="off"
                   />
                 </div>
 
@@ -1451,6 +1567,8 @@ export default function App() {
                 onLogout={handleLogout}
                 onUpdatePartnerEmail={handleUpdatePartnerEmail}
                 onResetFactory={handleResetFactory}
+                notificationPermission={notificationPermission}
+                onRequestNotificationPermission={requestNotificationPermission}
               />
             )}
           </motion.div>
