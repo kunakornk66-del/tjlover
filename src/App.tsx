@@ -62,6 +62,7 @@ export default function App() {
 
   const [memories, setMemories] = useState<Memory[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [partnerLastActiveTime, setPartnerLastActiveTime] = useState<string | null>(null);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [moodLogs, setMoodLogs] = useState<MoodLog[]>([]);
 
@@ -203,9 +204,17 @@ export default function App() {
   // 4. Synchronization and fetching from backend Express API
   const fetchCoupleData = async (coupleId: string) => {
     try {
-      const res = await appFetch(`/api/chats/${coupleId}`);
+      const emailParam = currentUser ? `?email=${encodeURIComponent(currentUser.email)}` : '';
+      const res = await appFetch(`/api/chats/${coupleId}${emailParam}`);
       if (res.ok) {
-        const chats = await res.json();
+        const chatsData = await res.json();
+        const chats = Array.isArray(chatsData) ? chatsData : (chatsData.messages || []);
+        const partnerLastActive = Array.isArray(chatsData) ? null : chatsData.partnerLastActive;
+
+        if (partnerLastActive !== undefined) {
+          setPartnerLastActiveTime(partnerLastActive);
+        }
+
         // Check for new messages from partner
         if (isInitialChatsLoaded.current && messagesRef.current.length > 0) {
           const existingIds = new Set(messagesRef.current.map((m) => m.id));
@@ -893,7 +902,8 @@ export default function App() {
       mediaType,
     };
     try {
-      const response = await appFetch(`/api/chats/${currentUser.coupleId}`, {
+      const emailParam = `?email=${encodeURIComponent(currentUser.email)}`;
+      const response = await appFetch(`/api/chats/${currentUser.coupleId}${emailParam}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: messagePayload }),
@@ -1539,6 +1549,7 @@ export default function App() {
                 partnerNickname={relationshipInfo.partnerNickname}
                 onTriggerNotification={triggerNotification}
                 onLogout={handleLogout}
+                partnerLastActiveTime={partnerLastActiveTime}
               />
             )}
 

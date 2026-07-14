@@ -18,6 +18,7 @@ interface User {
   coupleId?: string;
   username?: string;
   passwordHash?: string;
+  lastActive?: string;
 }
 
 interface RelationshipInfo {
@@ -47,6 +48,7 @@ interface ChatMessage {
   timestamp: string;
   mediaUrl?: string;
   mediaType?: "photo" | "video" | "sticker";
+  seen?: boolean;
 }
 
 interface CalendarEvent {
@@ -444,14 +446,57 @@ app.post("/api/couple/update-info", (req, res) => {
 // 6. Get & Post Chat Messages (With auto-replies)
 app.get("/api/chats/:coupleId", (req, res) => {
   const { coupleId } = req.params;
+  const { email } = req.query;
   const db = loadDB();
   const couple = db.couples[coupleId];
   if (!couple) return res.status(404).json({ error: "Not found" });
-  res.json(couple.messages);
+
+  const requesterEmail = typeof email === "string" ? email.toLowerCase().trim() : "";
+  if (requesterEmail) {
+    const user = findUserInDB(db, requesterEmail);
+    if (user) {
+      user.lastActive = new Date().toISOString();
+      db.users[user.email.toLowerCase().trim()] = user;
+      saveDB(db);
+    }
+  }
+
+  const ownerUser = couple.ownerEmail ? findUserInDB(db, couple.ownerEmail) : undefined;
+  const partnerUser = couple.partnerEmail ? findUserInDB(db, couple.partnerEmail) : undefined;
+
+  const messagesWithSeen = (couple.messages || []).map((msg) => {
+    let seen = false;
+    if (msg.senderId === "user" && partnerUser && partnerUser.lastActive) {
+      seen = new Date(partnerUser.lastActive) >= new Date(msg.timestamp);
+    } else if (msg.senderId === "partner" && ownerUser && ownerUser.lastActive) {
+      seen = new Date(ownerUser.lastActive) >= new Date(msg.timestamp);
+    }
+    return { ...msg, seen };
+  });
+
+  // Determine partner's lastActive time relative to the requester
+  let partnerLastActive: string | undefined = undefined;
+  if (requesterEmail) {
+    const isOwner = requesterEmail === (couple.ownerEmail || "").toLowerCase().trim() ||
+                    requesterEmail === (ownerUser?.username || "").toLowerCase().trim();
+    if (isOwner) {
+      partnerLastActive = partnerUser ? partnerUser.lastActive : undefined;
+    } else {
+      partnerLastActive = ownerUser ? ownerUser.lastActive : undefined;
+    }
+  } else {
+    partnerLastActive = partnerUser ? partnerUser.lastActive : undefined;
+  }
+
+  res.json({
+    messages: messagesWithSeen,
+    partnerLastActive
+  });
 });
 
 app.post("/api/chats/:coupleId", (req, res) => {
   const { coupleId } = req.params;
+  const { email } = req.query;
   const { message } = req.body; // { text, senderId, mediaUrl, mediaType }
   if (!coupleId || !message || !message.senderId || (!message.text && !message.mediaUrl)) {
     return res.status(400).json({ error: "Invalid message data" });
@@ -461,6 +506,15 @@ app.post("/api/chats/:coupleId", (req, res) => {
   const couple = db.couples[coupleId];
   if (!couple) return res.status(404).json({ error: "Not found" });
 
+  const requesterEmail = typeof email === "string" ? email.toLowerCase().trim() : "";
+  if (requesterEmail) {
+    const user = findUserInDB(db, requesterEmail);
+    if (user) {
+      user.lastActive = new Date().toISOString();
+      db.users[user.email.toLowerCase().trim()] = user;
+    }
+  }
+
   const newMessage: ChatMessage = {
     id: `msg-${Date.now()}`,
     senderId: message.senderId,
@@ -468,6 +522,7 @@ app.post("/api/chats/:coupleId", (req, res) => {
     timestamp: new Date().toISOString(),
     mediaUrl: message.mediaUrl,
     mediaType: message.mediaType,
+    seen: false,
   };
 
   couple.messages.push(newMessage);

@@ -25,6 +25,7 @@ export interface ChatMessage {
   isEncrypted: boolean;
   mediaUrl?: string;
   mediaType?: 'photo' | 'video' | 'sticker';
+  seen?: boolean;
 }
 
 export interface CalendarEvent {
@@ -60,6 +61,7 @@ export interface CurrentUser {
   coupleId?: string;
   username?: string;
   passwordHash?: string;
+  lastActive?: string;
 }
 
 export interface Couple {

@@ -352,8 +352,56 @@ async function handleLocalFallback(url: string, options?: RequestInit): Promise<
       const couple = db.couples[params.coupleId];
       if (!couple) return new MockResponse(404, { error: 'Couple not found' }) as any;
 
+      // Extract email query to update lastActive
+      let emailQuery = '';
+      try {
+        const urlObj = new URL(url, 'http://localhost');
+        emailQuery = urlObj.searchParams.get('email') || '';
+      } catch (e) {
+        const matches = url.match(/[?&]email=([^&]+)/);
+        if (matches) {
+          emailQuery = decodeURIComponent(matches[1]);
+        }
+      }
+
+      const cleanedEmailQuery = emailQuery.toLowerCase().trim();
+      if (cleanedEmailQuery && db.users[cleanedEmailQuery]) {
+        db.users[cleanedEmailQuery].lastActive = new Date().toISOString();
+        saveLocalDB(db);
+      }
+
       if (method === 'GET') {
-        return new MockResponse(200, couple.messages || []) as any;
+        const ownerUser = couple.ownerEmail ? db.users[couple.ownerEmail.toLowerCase().trim()] : undefined;
+        const partnerUser = couple.partnerEmail ? db.users[couple.partnerEmail.toLowerCase().trim()] : undefined;
+
+        const messagesWithSeen = (couple.messages || []).map((msg) => {
+          let seen = false;
+          if (msg.senderId === 'user' && partnerUser && partnerUser.lastActive) {
+            seen = new Date(partnerUser.lastActive) >= new Date(msg.timestamp);
+          } else if (msg.senderId === 'partner' && ownerUser && ownerUser.lastActive) {
+            seen = new Date(ownerUser.lastActive) >= new Date(msg.timestamp);
+          }
+          return { ...msg, seen };
+        });
+
+        // Determine partner's lastActive time relative to the requester
+        let partnerLastActive: string | undefined = undefined;
+        if (cleanedEmailQuery) {
+          const isOwner = cleanedEmailQuery === (couple.ownerEmail || '').toLowerCase().trim() ||
+                          cleanedEmailQuery === (ownerUser?.username || '').toLowerCase().trim();
+          if (isOwner) {
+            partnerLastActive = partnerUser ? partnerUser.lastActive : undefined;
+          } else {
+            partnerLastActive = ownerUser ? ownerUser.lastActive : undefined;
+          }
+        } else {
+          partnerLastActive = partnerUser ? partnerUser.lastActive : undefined;
+        }
+
+        return new MockResponse(200, {
+          messages: messagesWithSeen,
+          partnerLastActive
+        }) as any;
       } else if (method === 'POST') {
         const { message } = JSON.parse(options?.body as string || '{}');
         const newMessage: ChatMessage = {
@@ -364,6 +412,7 @@ async function handleLocalFallback(url: string, options?: RequestInit): Promise<
           isEncrypted: false,
           mediaUrl: message.mediaUrl,
           mediaType: message.mediaType,
+          seen: false,
         };
         couple.messages = couple.messages || [];
         couple.messages.push(newMessage);

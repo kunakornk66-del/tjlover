@@ -10,6 +10,7 @@ interface ChatSectionProps {
   partnerNickname: string;
   onTriggerNotification: (message: string) => void;
   onLogout?: () => void;
+  partnerLastActiveTime?: string | null;
 }
 
 // Simulated simple cryptographic hash for visualization
@@ -40,6 +41,7 @@ export default function ChatSection({
   partnerNickname,
   onTriggerNotification,
   onLogout,
+  partnerLastActiveTime,
 }: ChatSectionProps) {
   const [inputText, setInputText] = useState('');
   const [attachedMedia, setAttachedMedia] = useState<{ url: string; type: 'photo' | 'video' } | null>(null);
@@ -50,6 +52,42 @@ export default function ChatSection({
   const [isSecurityPanelOpen, setIsSecurityPanelOpen] = useState(false);
 
   const activeName = activeUser === 'user' ? userNickname : partnerNickname;
+
+  const formatTime = (isoString: string) => {
+    try {
+      const date = new Date(isoString);
+      return date.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
+    } catch (e) {
+      return '';
+    }
+  };
+
+  const getPartnerActiveStatus = () => {
+    if (!partnerLastActiveTime) return 'ยังไม่เข้าสู่ระบบหรือออฟไลน์อยู่ค่ะ';
+    
+    try {
+      const lastActiveDate = new Date(partnerLastActiveTime);
+      const now = new Date();
+      const diffMs = now.getTime() - lastActiveDate.getTime();
+      const diffSecs = Math.max(0, Math.floor(diffMs / 1000));
+      const diffMins = Math.floor(diffSecs / 60);
+      const diffHours = Math.floor(diffMins / 60);
+      
+      if (diffSecs < 15) {
+        return '🟢 หวานใจกำลังออนไลน์อยู่ตอนนี้';
+      } else if (diffMins < 1) {
+        return '⏱️ ออนไลน์เมื่อไม่กี่วินาทีก่อน';
+      } else if (diffMins < 60) {
+        return `⏱️ ออนไลน์เมื่อ ${diffMins} นาทีที่แล้ว`;
+      } else if (diffHours < 24) {
+        return `⏱️ ออนไลน์เมื่อ ${diffHours} ชั่วโมงที่แล้ว`;
+      } else {
+        return `⏱️ ออนไลน์ล่าสุดเมื่อ ${lastActiveDate.toLocaleDateString('th-TH')} ${lastActiveDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false })}`;
+      }
+    } catch (e) {
+      return '';
+    }
+  };
 
   useEffect(() => {
     if (chatListRef.current) {
@@ -103,9 +141,14 @@ export default function ChatSection({
                   <Lock className="w-2.5 h-2.5" /> SECURE
                 </span>
               </div>
-              <p className="text-[10px] text-[#A89090] font-semibold">
-                กำลังแชทเป็น: <span className="underline">{activeName}</span> (เปลี่ยนสลับฝ่ายได้ที่หัวข้อบนสุด)
-              </p>
+              <div className="flex flex-col gap-0.5">
+                <p className="text-[10px] text-[#A89090] font-semibold leading-none">
+                  กำลังแชทเป็น: <span className="underline">{activeName}</span> (เปลี่ยนสลับฝ่ายได้ที่หัวข้อบนสุด)
+                </p>
+                <p className={`text-[9px] font-bold leading-none mt-1 ${getPartnerActiveStatus().startsWith('🟢') ? 'text-emerald-500' : 'text-[#A89090]'}`}>
+                  {getPartnerActiveStatus()}
+                </p>
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-1.5">
@@ -207,9 +250,25 @@ export default function ChatSection({
                 </div>
 
                 {/* Status indicator */}
-                <span className="text-[8px] text-gray-400 font-bold font-mono pb-1 select-none">
-                  อ่านแล้ว
-                </span>
+                <div className="flex flex-col items-end justify-end pb-1 select-none shrink-0 min-w-[45px]">
+                  {isMe ? (
+                    msg.seen ? (
+                      <span className="text-[8px] text-[#FF8E8E] font-black font-mono flex flex-col items-end leading-normal text-right">
+                        <span>อ่านแล้ว ✓✓</span>
+                        <span className="text-[7px] text-gray-300 font-normal">{formatTime(msg.timestamp)}</span>
+                      </span>
+                    ) : (
+                      <span className="text-[8px] text-gray-400 font-black font-mono flex flex-col items-end leading-normal text-right">
+                        <span>ส่งแล้ว ✓</span>
+                        <span className="text-[7px] text-gray-300 font-normal">{formatTime(msg.timestamp)}</span>
+                      </span>
+                    )
+                  ) : (
+                    <span className="text-[7px] text-gray-400 font-normal font-mono">
+                      {formatTime(msg.timestamp)}
+                    </span>
+                  )}
+                </div>
               </div>
             );
           })}
