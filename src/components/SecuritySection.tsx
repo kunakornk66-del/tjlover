@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, Cloud, Download, Upload, CheckCircle2, Lock, Key, RefreshCw, AlertTriangle, FileJson, LogOut, User, Link, Trash2, ShieldAlert } from 'lucide-react';
+import { Shield, Cloud, Download, Upload, CheckCircle2, Lock, Key, RefreshCw, AlertTriangle, FileJson, LogOut, User, Link, Trash2, ShieldAlert, Copy } from 'lucide-react';
 import { Memory, ChatMessage, CalendarEvent, MoodLog, RelationshipInfo, CurrentUser, Couple } from '../types';
 
 interface SecuritySectionProps {
@@ -199,6 +199,20 @@ export default function SecuritySection({
   };
 
   const isOwner = currentUser && currentCouple && currentCouple.ownerEmail === currentUser.email;
+
+  const handleCopyRawCode = () => {
+    if (!currentCouple || !currentCouple.pairingCode) return;
+    navigator.clipboard.writeText(currentCouple.pairingCode);
+    onTriggerNotification('📋 คัดลอกรหัสคู่รักสำหรับส่งให้แฟนเรียบร้อยแล้วค่ะ! 💕');
+  };
+
+  const handleCopyInviteLink = () => {
+    if (!currentCouple || !currentCouple.pairingCode) return;
+    const codeOnly = currentCouple.pairingCode.replace('LOVE-', '');
+    const inviteLink = `${window.location.origin}${window.location.pathname}?code=${codeOnly}`;
+    navigator.clipboard.writeText(inviteLink);
+    onTriggerNotification('📋 คัดลอกลิงก์คำเชิญเรียบร้อยแล้วค่ะ! แฟนสามารถกดลิงก์นี้เพื่อลงทะเบียนแล้วเชื่อมต่อได้อัตโนมัติทันทีค่ะ! 💕');
+  };
 
   return (
     <div className="space-y-6">
@@ -410,15 +424,40 @@ export default function SecuritySection({
             </div>
           </div>
 
-          <div className="p-4 bg-[#FFF9F5] border border-[#F0E6DD] rounded-2xl space-y-3">
-            <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-[#F0E6DD]">
+          <div className="p-4 bg-[#FFF9F5] border border-[#F0E6DD] rounded-2xl space-y-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-3.5 rounded-xl border border-[#F0E6DD] gap-3">
               <div>
                 <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">รหัสโปรแกรมคู่รัก (Pairing Code)</p>
-                <p className="text-lg font-black text-[#FF8E8E] font-mono tracking-wider">{currentCouple?.pairingCode || "LOVE-????"}</p>
+                <p className="text-xl font-black text-[#FF8E8E] font-mono tracking-widest">{currentCouple?.pairingCode || "LOVE-????"}</p>
               </div>
-              <span className="bg-[#FFEFEF] text-[#FF8E8E] text-[10px] font-bold px-2.5 py-1 rounded-full border border-[#FF8E8E]/10">
-                ให้แฟนใส่รหัสนี้เพื่อเชื่อมต่อ
-              </span>
+              <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={handleCopyRawCode}
+                  className="px-3 py-1.5 bg-[#FFF3F3] hover:bg-[#FFE6E6] text-[#FF8E8E] border border-[#FFD9D9] font-black text-[11px] rounded-lg flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>คัดลอกรหัสคู่รัก 🔑</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Share Link Banner */}
+            <div className="bg-[#FFF9F0] border border-[#FFE7C4] rounded-xl p-3.5 space-y-2 text-left">
+              <p className="text-xs font-black text-amber-600 flex items-center gap-1">
+                <span>✨ วิธีส่งชวนแฟนเข้าใช้งานที่ง่ายที่สุด!</span>
+              </p>
+              <p className="text-[11px] text-gray-600 leading-relaxed font-semibold">
+                เราได้สร้างระบบพิเศษ! เพียงกดปุ่มด้านล่างเพื่อคัดลอก <strong className="text-[#FF8E8E]">"ลิงก์เชิญชวนพิเศษ"</strong> ส่งให้แฟนของคุณทาง Line / Messenger เมื่อแฟนคุณเปิดลิงก์นี้ ระบบจะกรอกรหัสและพาแฟนเข้าร่วมห้องอัตโนมัติทันทีโดยไม่ต้องจำรหัสเลยค่ะ!
+              </p>
+              <button
+                type="button"
+                onClick={handleCopyInviteLink}
+                className="w-full py-2.5 bg-gradient-to-r from-amber-400 to-[#FF8E8E] hover:from-amber-500 hover:to-rose-400 text-white font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] shadow-xs cursor-pointer"
+              >
+                <Link className="w-3.5 h-3.5" />
+                <span>คัดลอกลิงก์เชิญชวนส่งให้แฟนทันที 🔗</span>
+              </button>
             </div>
 
             {isOwner ? (

@@ -1,46 +1,4 @@
 {
-  "users": {
-    "couple.simulated@gmail.com": {
-      "email": "couple.simulated@gmail.com",
-      "name": "คุณหมีน้อย 🐻",
-      "picture": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150"
-    },
-    "test@gmail.com": {
-      "email": "test@gmail.com",
-      "name": "test",
-      "picture": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150"
-    },
-    "kunakorn.k66@gmail.com": {
-      "email": "kunakorn.k66@gmail.com",
-      "name": "แทน",
-      "picture": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150"
-    },
-    "tankung@app.com": {
-      "email": "tankung@app.com",
-      "username": "tankung",
-      "name": "tankung",
-      "passwordHash": "14196140e1734e5dcacc47dfd2253c2c18d7c88597bfad2701f18e4e0b62fd76",
-      "picture": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150",
-      "coupleId": "couple-1784014223363"
-    }
-  },
-  "couples": {
-    "couple-1784014223363": {
-      "id": "couple-1784014223363",
-      "ownerEmail": "tankung@app.com",
-      "pairingCode": "LOVE-OUGS",
-      "relationshipInfo": {
-        "anniversaryDate": "2026-07-14",
-        "userNickname": "คุณหมีน้อย 🐻",
-        "partnerNickname": "คุณกระต่ายอ้วน 🐰",
-        "loveMessage": "",
-        "userAvatar": "",
-        "partnerAvatar": ""
-      },
-      "memories": [],
-      "messages": [],
-      "events": [],
-      "moodLogs": []
-    }
-  }
+  "users": {},
+  "couples": {}
 }

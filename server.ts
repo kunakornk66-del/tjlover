@@ -153,6 +153,18 @@ function createDefaultCouple(id: string, ownerEmail: string, partnerEmail?: stri
 
 // ------------------- API ROUTES -------------------
 
+// Helper to find a user by email or username case-insensitively
+function findUserInDB(db: DB, input: string): User | undefined {
+  if (!input) return undefined;
+  const cleaned = input.toLowerCase().trim();
+  if (db.users[cleaned]) {
+    return db.users[cleaned];
+  }
+  return Object.values(db.users).find(
+    (u) => u.email.toLowerCase().trim() === cleaned || u.username?.toLowerCase().trim() === cleaned
+  );
+}
+
 // 0.1 Register with Username and Password
 app.post("/api/auth/register-username", (req, res) => {
   const { username, passwordHash } = req.body;
@@ -189,7 +201,7 @@ app.post("/api/auth/register-username", (req, res) => {
   db.users[mockEmail] = newUser;
   saveDB(db);
 
-  return res.json({ success: true, message: "สมัครสมาชิกสำเร็จแล้วค่ะ สามารถเข้าสู่ระบบได้ทันที!" });
+  return res.json({ success: true, message: "สมัครสมาชิกสำเร็จแล้วค่ะ สามารถเข้าสู่ระบบได้ทันที!", user: newUser, couple: null });
 });
 
 // 0.2 Login with Username and Password
@@ -284,21 +296,28 @@ app.post("/api/couple/create", (req, res) => {
   const cleanedEmail = email.toLowerCase().trim();
   const cleanedPartner = partnerEmail ? partnerEmail.toLowerCase().trim() : undefined;
 
-  const user = db.users[cleanedEmail];
+  const user = findUserInDB(db, cleanedEmail);
   if (!user) {
-    return res.status(404).json({ error: "User not found" });
+    return res.status(404).json({ error: "ไม่พบข้อมูลผู้ใช้งานที่พยายามสร้างห้องคู่รักในระบบฐานข้อมูลค่ะ" });
   }
 
   const coupleId = `couple-${Date.now()}`;
-  const couple = createDefaultCouple(coupleId, cleanedEmail, cleanedPartner);
+  // Always use user's official email key to link ownership
+  const couple = createDefaultCouple(coupleId, user.email, cleanedPartner);
 
   db.couples[coupleId] = couple;
   user.coupleId = coupleId;
-  db.users[cleanedEmail] = user;
+  db.users[user.email.toLowerCase().trim()] = user;
 
-  // If partner email is provided, we can pre-assign if they already exist
-  if (cleanedPartner && db.users[cleanedPartner]) {
-    db.users[cleanedPartner].coupleId = coupleId;
+  // If partner email/username is provided, we can pre-assign if they already exist
+  if (cleanedPartner) {
+    const partnerUser = findUserInDB(db, cleanedPartner);
+    if (partnerUser) {
+      partnerUser.coupleId = coupleId;
+      db.users[partnerUser.email.toLowerCase().trim()] = partnerUser;
+      // Update couple's partnerEmail with partner's official email key
+      couple.partnerEmail = partnerUser.email.toLowerCase().trim();
+    }
   }
 
   saveDB(db);
@@ -319,11 +338,16 @@ app.post("/api/couple/set-partner", (req, res) => {
   }
 
   const cleanedPartner = partnerEmail.toLowerCase().trim();
-  couple.partnerEmail = cleanedPartner;
-
-  // If partner is already a registered user, automatically link their couple ID
-  if (db.users[cleanedPartner]) {
-    db.users[cleanedPartner].coupleId = coupleId;
+  
+  // Find partner by email or username
+  const partnerUser = findUserInDB(db, cleanedPartner);
+  if (partnerUser) {
+    couple.partnerEmail = partnerUser.email.toLowerCase().trim();
+    partnerUser.coupleId = coupleId;
+    db.users[partnerUser.email.toLowerCase().trim()] = partnerUser;
+  } else {
+    // Fallback if not found yet, assign as literal string
+    couple.partnerEmail = cleanedPartner;
   }
 
   saveDB(db);
@@ -352,9 +376,9 @@ app.post("/api/couple/join", (req, res) => {
     cleanedCode = "LOVE-" + cleanedCode.substring(4);
   }
 
-  const user = db.users[cleanedEmail];
+  const user = findUserInDB(db, cleanedEmail);
   if (!user) {
-    return res.status(404).json({ error: "User not found" });
+    return res.status(404).json({ error: "ไม่พบข้อมูลผู้ใช้งานที่พยายามเชื่อมต่อในระบบฐานข้อมูลค่ะ (เคล็ดลับ: กรุณาตรวจสอบว่าคุณล็อกอินด้วยชื่อผู้ใช้ที่สมัครแล้วเสร็จสมบูรณ์นะคะ)" });
   }
 
   // Find the couple with the given pairing code
@@ -364,9 +388,9 @@ app.post("/api/couple/join", (req, res) => {
   }
 
   // Bind partner email and link the user
-  couple.partnerEmail = cleanedEmail;
+  couple.partnerEmail = user.email.toLowerCase().trim();
   user.coupleId = couple.id;
-  db.users[cleanedEmail] = user;
+  db.users[user.email.toLowerCase().trim()] = user;
 
   saveDB(db);
   res.json({ couple, user });
@@ -621,9 +645,10 @@ app.post("/api/couple/reset", (req, res) => {
   }
 
   // Also ensure the requesting user's coupleId is removed
-  const user = db.users[cleanedEmail];
+  const user = findUserInDB(db, cleanedEmail);
   if (user) {
     delete user.coupleId;
+    db.users[user.email.toLowerCase().trim()] = user;
   }
   
   // Save changes
