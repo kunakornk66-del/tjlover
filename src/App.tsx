@@ -10,6 +10,7 @@ import MemoryBoxSection from './components/MemoryBoxSection';
 import ChatSection from './components/ChatSection';
 import MoodLoggerSection from './components/MoodLoggerSection';
 import SecuritySection from './components/SecuritySection';
+import DailyFlashbackReminder from './components/DailyFlashbackReminder';
 
 // Custom Notification Interface
 interface BannerNotification {
@@ -69,6 +70,23 @@ export default function App() {
   const [loginName, setLoginName] = useState('');
   const [loginAvatar, setLoginAvatar] = useState('🐻');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  // Custom Username & Password Auth states
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [loginUsername, setLoginUsername] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [signUpUsername, setSignUpUsername] = useState('');
+  const [signUpPassword, setSignUpPassword] = useState('');
+  const [authMessage, setAuthMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  const handleSwitchAuthMode = (mode: 'login' | 'register') => {
+    setAuthMode(mode);
+    setLoginUsername('');
+    setLoginPassword('');
+    setSignUpUsername('');
+    setSignUpPassword('');
+    setAuthMessage(null);
+  };
 
   // Local state for Couple Setup
   const [setupMode, setSetupMode] = useState<'create' | 'join'>('create');
@@ -197,7 +215,119 @@ export default function App() {
     }
   };
 
-  // Periodical long polling for real-time chat & data updates
+  // Hash function using Crypto API
+  const computeHash = async (text: string): Promise<string> => {
+    const msgBuffer = new TextEncoder().encode(text);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  };
+
+  // Sign Up / Register using Username and Password
+  const handleUsernameRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthMessage(null);
+    
+    const usernameTrimmed = signUpUsername.trim();
+    if (!usernameTrimmed) {
+      setAuthMessage({ text: 'กรุณากรอกชื่อผู้ใช้งานค่ะ', type: 'error' });
+      return;
+    }
+
+    const usernameRegex = /^[a-zA-Z0-9_]+$/;
+    if (!usernameRegex.test(usernameTrimmed)) {
+      setAuthMessage({ text: 'ชื่อผู้ใช้งานต้องประกอบด้วยตัวอักษรภาษาอังกฤษ ตัวเลข หรือขีดล่าง (_) เท่านั้นค่ะ', type: 'error' });
+      return;
+    }
+
+    if (signUpPassword.length < 6) {
+      setAuthMessage({ text: 'รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษรค่ะ', type: 'error' });
+      return;
+    }
+
+    setIsLoggingIn(true);
+    try {
+      const passwordHash = await computeHash(signUpPassword);
+      const response = await appFetch('/api/auth/register-username', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: usernameTrimmed, passwordHash }),
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        // Successful registration: DO NOT login automatically!
+        // Show success message and transition to login tab with inputs cleared.
+        setAuthMode('login');
+        setLoginUsername('');
+        setLoginPassword('');
+        setSignUpUsername('');
+        setSignUpPassword('');
+        setAuthMessage({ text: data.message || 'สมัครสมาชิกสำเร็จแล้วค่ะ! กรุณากรอกข้อมูลเพื่อเข้าสู่ระบบอีกครั้ง', type: 'success' });
+        triggerNotification('✅ สมัครสมาชิกสำเร็จแล้วค่ะ!', 'info');
+      } else {
+        setAuthMessage({ text: data.error || 'เกิดข้อผิดพลาดในการสมัครสมาชิก', type: 'error' });
+      }
+    } catch (err) {
+      console.error(err);
+      setAuthMessage({ text: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์เพื่อสมัครสมาชิกได้ค่ะ', type: 'error' });
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  // Sign In / Login using Username and Password
+  const handleUsernameLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthMessage(null);
+
+    const usernameTrimmed = loginUsername.trim();
+    if (!usernameTrimmed || !loginPassword) {
+      setAuthMessage({ text: 'กรุณากรอกข้อมูลให้ครบถ้วนค่ะ', type: 'error' });
+      return;
+    }
+
+    setIsLoggingIn(true);
+    try {
+      const passwordHash = await computeHash(loginPassword);
+      const response = await appFetch('/api/auth/login-username', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: usernameTrimmed, passwordHash }),
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        setCurrentUser(data.user);
+        localStorage.setItem('couple_user', JSON.stringify(data.user));
+
+        if (data.couple) {
+          setCurrentCouple(data.couple);
+          setRelationshipInfo(data.couple.relationshipInfo);
+          fetchCoupleData(data.couple.id);
+          triggerNotification(`💖 ล็อกอินสำเร็จ ยินดีต้อนรับกลับบ้านของสองเราค่ะ!`, 'love');
+        } else {
+          setCurrentCouple(null);
+          setRelationshipInfo({
+            anniversaryDate: new Date().toISOString().split('T')[0],
+            userNickname: '',
+            partnerNickname: '',
+            loveMessage: '',
+            userAvatar: '',
+            partnerAvatar: '',
+          });
+          triggerNotification(`🌱 ล็อกอินสำเร็จแล้วค่ะ! ขั้นตอนต่อไปมาเริ่มเชื่อมต่อหัวใจกันน้า`, 'info');
+        }
+      } else {
+        setAuthMessage({ text: data.error || 'ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง', type: 'error' });
+      }
+    } catch (err) {
+      console.error(err);
+      setAuthMessage({ text: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ล็อกอินได้ค่ะ', type: 'error' });
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
   useEffect(() => {
     if (!currentUser || !currentUser.coupleId) return;
 
@@ -225,7 +355,12 @@ export default function App() {
     setMemories([]);
     setEvents([]);
     setMoodLogs([]);
-    triggerNotification('👋 ออกจากระบบหวานใจเรียบร้อยแล้วค่ะ เจอกันใหม่นะจ๊ะ!', 'info');
+    setLoginUsername('');
+    setLoginPassword('');
+    setSignUpUsername('');
+    setSignUpPassword('');
+    setAuthMessage(null);
+    triggerNotification('👋 ออกจากระบบเรียบร้อยแล้วค่ะ เจอกันใหม่นะจ๊ะ!', 'info');
   };
 
   // Setup Couple Space (Create action)
@@ -557,72 +692,191 @@ export default function App() {
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="w-full max-w-md bg-white border border-[#F0E6DD] rounded-3xl p-6 sm:p-8 shadow-xl text-center space-y-6"
+            className="w-full max-w-md bg-white border border-[#F0E6DD] rounded-3xl p-6 sm:p-8 shadow-xl space-y-6"
           >
-            <div className="space-y-2">
-              <span className="inline-block w-14 h-14 bg-linear-to-tr from-brand-pink to-rose-400 rounded-full flex items-center justify-center text-3xl shadow-md border-2 border-white mx-auto animate-pulse">
+            <div className="text-center space-y-2">
+              <span className="inline-block w-14 h-14 bg-linear-to-tr from-rose-400 to-pink-500 rounded-full flex items-center justify-center text-3xl shadow-md border-2 border-white mx-auto animate-pulse">
                 ❤️
               </span>
               <h1 className="font-extrabold text-2xl text-[#5D4E4E] tracking-tight">
                 Couple Memory Hub 💖
               </h1>
               <p className="text-xs text-[#A89090] max-w-sm mx-auto leading-relaxed">
-                เซฟโซนรักแบบสองเราแชร์ภาพ ความทรงจำ แชท และความรู้สึกร่วมกันแบบเรียลไทม์ ปลอดภัยและโรแมนติกที่สุด
+                เซฟโซนรักแบบสองเราแชร์บันทึก แชท และความทรงจำร่วมกันอย่างปลอดภัย ลงทะเบียนด้วยชื่อผู้ใช้งานและรหัสผ่านได้ทันทีค่ะ
               </p>
             </div>
 
-            {/* Simple Email Login Form */}
-            <form 
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (loginEmail.trim()) {
-                  const derivedName = loginEmail.trim().split('@')[0];
-                  handleLogin(loginEmail.trim(), derivedName);
-                }
-              }} 
-              className="space-y-4 text-left bg-[#FFF9F5] p-5 sm:p-6 rounded-2xl border border-[#F0E6DD]"
-            >
-              <div className="flex items-center gap-2 mb-2 justify-center">
-                <span className="w-6 h-6 bg-[#FFEFEF] rounded-full flex items-center justify-center text-xs text-[#FF8E8E]">💌</span>
-                <p className="text-sm font-black text-[#5D4E4E] tracking-tight">เข้าใช้งานด้วยอีเมลของคุณ</p>
-              </div>
-              
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-[#A89090] uppercase mb-1">กรอกอีเมลของคุณหรือของแฟน:</label>
-                  <input
-                    type="email"
-                    value={loginEmail}
-                    onChange={(e) => setLoginEmail(e.target.value)}
-                    placeholder="เช่น sweet-couple@gmail.com"
-                    className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] focus:ring-1 focus:ring-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E] font-medium placeholder:text-gray-300 shadow-2xs"
-                    required
-                  />
-                </div>
-              </div>
-
+            {/* Premium Tab Bar */}
+            <div className="grid grid-cols-2 p-1 bg-gray-100 rounded-2xl border border-[#F0E6DD]/60">
               <button
-                type="submit"
-                disabled={isLoggingIn}
-                className="w-full py-3 bg-[#FF8E8E] hover:bg-[#FF8E8E]/90 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-all active:scale-[0.98]"
+                type="button"
+                onClick={() => handleSwitchAuthMode('login')}
+                className={`py-2 text-xs font-black rounded-xl transition-all cursor-pointer ${
+                  authMode === 'login'
+                    ? 'bg-white text-[#FF8E8E] shadow-sm'
+                    : 'text-[#A89090] hover:text-[#5D4E4E]'
+                }`}
               >
-                {isLoggingIn ? 'กำลังเข้าห้องความรัก...' : 'เข้าสู่ระบบห้องของสองเรา 💖'}
+                🔑 เข้าสู่ระบบ (Sign In)
               </button>
+              <button
+                type="button"
+                onClick={() => handleSwitchAuthMode('register')}
+                className={`py-2 text-xs font-black rounded-xl transition-all cursor-pointer ${
+                  authMode === 'register'
+                    ? 'bg-white text-[#FF8E8E] shadow-sm'
+                    : 'text-[#A89090] hover:text-[#5D4E4E]'
+                }`}
+              >
+                📝 สมัครสมาชิกใหม่ (Sign Up)
+              </button>
+            </div>
 
-              <div className="bg-white p-3 rounded-xl border border-[#F0E6DD]/60 text-[11px] text-gray-500 leading-relaxed space-y-1">
-                <p className="font-extrabold text-[#FF8E8E] flex items-center gap-1">
-                  <span>💡</span> แฟนเข้าคู่กันยังไง?
-                </p>
-                <p>
-                  เมื่อคุณสร้างพื้นที่คู่รักเรียบร้อยแล้ว แฟนของคุณเพียงพิมพ์อีเมลของตัวเองในช่องนี้ ก็จะเชื่อมต่อเข้ามายังหน้านี้และแชร์บันทึกรักร่วมกันได้ทันทีค่ะ!
-                </p>
-              </div>
-            </form>
+            {/* Notification Messages */}
+            {authMessage && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className={`p-3.5 rounded-xl border text-xs leading-relaxed flex items-start gap-2 ${
+                  authMessage.type === 'success'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                    : 'bg-rose-50 border-rose-200 text-rose-800'
+                }`}
+              >
+                <span className="text-base mt-0.5">
+                  {authMessage.type === 'success' ? '✅' : '⚠️'}
+                </span>
+                <p className="font-semibold">{authMessage.text}</p>
+              </motion.div>
+            )}
+
+            {/* Anti-Autofill protection and forms */}
+            {authMode === 'login' ? (
+              <form
+                onSubmit={handleUsernameLogin}
+                className="space-y-4 text-left bg-[#FFF9F5] p-5 sm:p-6 rounded-2xl border border-[#F0E6DD]"
+                autoComplete="off"
+              >
+                {/* Dummy structures to trap browser password managers and autofill */}
+                <input type="text" name="prevent_autofill_user" style={{ display: 'none' }} tabIndex={-1} />
+                <input type="password" name="prevent_autofill_pass" style={{ display: 'none' }} tabIndex={-1} />
+
+                <div className="flex items-center gap-2 mb-2 justify-center">
+                  <span className="w-6 h-6 bg-[#FFEFEF] rounded-full flex items-center justify-center text-xs text-[#FF8E8E]">👤</span>
+                  <p className="text-sm font-black text-[#5D4E4E] tracking-tight">ระบุข้อมูลผู้ใช้เพื่อเข้าระบบ</p>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#A89090] uppercase mb-1">
+                      ชื่อผู้ใช้งาน (Username):
+                    </label>
+                    <input
+                      type="text"
+                      name="couple_username_login"
+                      value={loginUsername}
+                      onChange={(e) => setLoginUsername(e.target.value)}
+                      placeholder="กรอกชื่อผู้ใช้งานภาษาอังกฤษ ตัวเลข ขีดล่าง"
+                      className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] focus:ring-1 focus:ring-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E] font-medium placeholder:text-gray-300 shadow-2xs"
+                      autoComplete="off"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#A89090] uppercase mb-1">
+                      รหัสผ่าน (Password):
+                    </label>
+                    <input
+                      type="password"
+                      name="couple_password_login"
+                      value={loginPassword}
+                      onChange={(e) => setLoginPassword(e.target.value)}
+                      placeholder="กรอกรหัสผ่านของคุณ"
+                      className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] focus:ring-1 focus:ring-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E] font-medium placeholder:text-gray-300 shadow-2xs"
+                      autoComplete="off"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isLoggingIn}
+                  className="w-full py-3 mt-2 bg-[#FF8E8E] hover:bg-[#FF8E8E]/90 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-all active:scale-[0.98]"
+                >
+                  {isLoggingIn ? 'กำลังตรวจสอบสิทธิ์...' : 'เข้าสู่ระบบห้องของสองเรา 💖'}
+                </button>
+              </form>
+            ) : (
+              <form
+                onSubmit={handleUsernameRegister}
+                className="space-y-4 text-left bg-[#FFF9F5] p-5 sm:p-6 rounded-2xl border border-[#F0E6DD]"
+                autoComplete="off"
+              >
+                {/* Dummy structures to trap browser password managers and autofill */}
+                <input type="text" name="prevent_autofill_user_reg" style={{ display: 'none' }} tabIndex={-1} />
+                <input type="password" name="prevent_autofill_pass_reg" style={{ display: 'none' }} tabIndex={-1} />
+
+                <div className="flex items-center gap-2 mb-2 justify-center">
+                  <span className="w-6 h-6 bg-[#FFEFEF] rounded-full flex items-center justify-center text-xs text-[#FF8E8E]">📝</span>
+                  <p className="text-sm font-black text-[#5D4E4E] tracking-tight">กรอกข้อมูลเพื่อสมัครสมาชิกใหม่</p>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#A89090] uppercase mb-1">
+                      ชื่อผู้ใช้งาน (Username): <span className="text-rose-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="couple_username_signup"
+                      value={signUpUsername}
+                      onChange={(e) => setSignUpUsername(e.target.value)}
+                      placeholder="ภาษาอังกฤษ / ตัวเลข / ขีดล่างเท่านั้น"
+                      className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] focus:ring-1 focus:ring-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E] font-medium placeholder:text-gray-300 shadow-2xs"
+                      autoComplete="off"
+                      required
+                    />
+                    <span className="block text-[10px] text-gray-400 mt-1 font-medium">
+                      * จัดเก็บในระบบในรูปแบบเสมือน: username@app.com
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#A89090] uppercase mb-1">
+                      รหัสผ่าน (Password): <span className="text-rose-400">*</span>
+                    </label>
+                    <input
+                      type="password"
+                      name="couple_password_signup"
+                      value={signUpPassword}
+                      onChange={(e) => setSignUpPassword(e.target.value)}
+                      placeholder="รหัสผ่านอย่างน้อย 6 ตัวอักษร"
+                      className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] focus:ring-1 focus:ring-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E] font-medium placeholder:text-gray-300 shadow-2xs"
+                      autoComplete="new-password"
+                      required
+                    />
+                    <span className="block text-[10px] text-gray-400 mt-1 font-medium">
+                      * จัดเก็บอย่างปลอดภัยด้วยการเข้ารหัส SHA-256 ลงในคอลเลกชันผู้ใช้บน Firestore
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isLoggingIn}
+                  className="w-full py-3 mt-2 bg-[#FF8E8E] hover:bg-[#FF8E8E]/90 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-all active:scale-[0.98]"
+                >
+                  {isLoggingIn ? 'กำลังดำเนินการ...' : 'ลงทะเบียนผู้ใช้ใหม่ 🌿'}
+                </button>
+              </form>
+            )}
 
             <div className="relative flex items-center justify-center">
               <div className="absolute w-full border-t border-[#F0E6DD]"></div>
               <span className="relative bg-white px-3 text-[10px] font-bold text-[#A89090] uppercase tracking-widest">
-                หรือ เข้าใช้แบบจำลองด่วน
+                หรือ เข้าใช้งานระบบสาธิตด่วน
               </span>
             </div>
 
@@ -630,11 +884,44 @@ export default function App() {
             <div className="space-y-4">
               <button
                 type="button"
-                onClick={() => handleLogin('couple.simulated@gmail.com', 'คุณหมีน้อย 🐻')}
+                onClick={async () => {
+                  setAuthMessage(null);
+                  setIsLoggingIn(true);
+                  try {
+                    const defaultHash = await computeHash('password123');
+                    await appFetch('/api/auth/register-username', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ username: 'couple_demo', passwordHash: defaultHash }),
+                    });
+                    
+                    const response = await appFetch('/api/auth/login-username', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ username: 'couple_demo', passwordHash: defaultHash }),
+                    });
+
+                    if (response.ok) {
+                      const data = await response.json();
+                      setCurrentUser(data.user);
+                      localStorage.setItem('couple_user', JSON.stringify(data.user));
+                      if (data.couple) {
+                        setCurrentCouple(data.couple);
+                        setRelationshipInfo(data.couple.relationshipInfo);
+                        fetchCoupleData(data.couple.id);
+                      }
+                      triggerNotification('🦊 เข้าสู่ระบบทดลองเรียบร้อยแล้วค่ะ!', 'info');
+                    }
+                  } catch (e) {
+                    console.error(e);
+                  } finally {
+                    setIsLoggingIn(false);
+                  }
+                }}
                 disabled={isLoggingIn}
                 className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-[#5D4E4E] border border-[#F0E6DD] font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-[0.98]"
               >
-                ใช้บัญชีทดสอบระบบด่วน 🐻🐰
+                เข้าใช้งานด้วยบัญชีเดโม่ (couple_demo) 🦊
               </button>
             </div>
           </motion.div>
@@ -899,14 +1186,25 @@ export default function App() {
             className="space-y-6"
           >
             {activeTab === 'home' && (
-              <AnniversarySection
-                info={relationshipInfo}
-                onUpdateInfo={handleUpdateRelationshipInfo}
-                activeUser={activeUser}
-                userName={relationshipInfo.userNickname}
-                partnerName={relationshipInfo.partnerNickname}
-                events={events}
-              />
+              <>
+                <AnniversarySection
+                  info={relationshipInfo}
+                  onUpdateInfo={handleUpdateRelationshipInfo}
+                  activeUser={activeUser}
+                  userName={relationshipInfo.userNickname}
+                  partnerName={relationshipInfo.partnerNickname}
+                  events={events}
+                />
+                <DailyFlashbackReminder
+                  memories={memories}
+                  onSendMessage={handleSendMessage}
+                  onNavigateToTab={(tab) => setActiveTab(tab)}
+                  activeUser={activeUser}
+                  userNickname={relationshipInfo.userNickname}
+                  partnerNickname={relationshipInfo.partnerNickname}
+                  onTriggerNotification={triggerNotification}
+                />
+              </>
             )}
 
             {activeTab === 'calendar' && (

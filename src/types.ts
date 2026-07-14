@@ -58,6 +58,8 @@ export interface CurrentUser {
   name: string;
   picture?: string;
   coupleId?: string;
+  username?: string;
+  passwordHash?: string;
 }
 
 export interface Couple {

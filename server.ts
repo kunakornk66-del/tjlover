@@ -16,6 +16,8 @@ interface User {
   name: string;
   picture?: string;
   coupleId?: string;
+  username?: string;
+  passwordHash?: string;
 }
 
 interface RelationshipInfo {
@@ -170,6 +172,85 @@ function createDefaultCouple(id: string, ownerEmail: string, partnerEmail?: stri
 }
 
 // ------------------- API ROUTES -------------------
+
+// 0.1 Register with Username and Password
+app.post("/api/auth/register-username", (req, res) => {
+  const { username, passwordHash } = req.body;
+  if (!username || !passwordHash) {
+    return res.status(400).json({ error: "กรุณากรอกข้อมูลให้ครบถ้วนค่ะ" });
+  }
+
+  const cleanedUsername = username.trim();
+  const usernameRegex = /^[a-zA-Z0-9_]+$/;
+  if (!usernameRegex.test(cleanedUsername)) {
+    return res.status(400).json({ error: "ชื่อผู้ใช้งานต้องเป็นภาษาอังกฤษ ตัวเลข หรือเครื่องหมายขีดล่าง (_) เท่านั้นค่ะ" });
+  }
+
+  const mockEmail = `${cleanedUsername.toLowerCase()}@app.com`;
+  const db = loadDB();
+
+  // Check if username already exists
+  const existingUser = Object.values(db.users).find(
+    (u) => u.username?.toLowerCase() === cleanedUsername.toLowerCase() || u.email.toLowerCase() === mockEmail
+  );
+
+  if (existingUser) {
+    return res.status(400).json({ error: "ชื่อผู้ใช้งานนี้ถูกใช้ไปแล้วค่ะ กรุณาเปลี่ยนชื่อใหม่นะคะ" });
+  }
+
+  const newUser: User = {
+    email: mockEmail,
+    username: cleanedUsername,
+    name: cleanedUsername,
+    passwordHash: passwordHash,
+    picture: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150"
+  };
+
+  db.users[mockEmail] = newUser;
+  saveDB(db);
+
+  return res.json({ success: true, message: "สมัครสมาชิกสำเร็จแล้วค่ะ สามารถเข้าสู่ระบบได้ทันที!" });
+});
+
+// 0.2 Login with Username and Password
+app.post("/api/auth/login-username", (req, res) => {
+  const { username, passwordHash } = req.body;
+  if (!username || !passwordHash) {
+    return res.status(400).json({ error: "กรุณากรอกข้อมูลให้ครบถ้วนค่ะ" });
+  }
+
+  const cleanedUsername = username.trim().toLowerCase();
+  const db = loadDB();
+
+  const user = Object.values(db.users).find(
+    (u) => u.username?.toLowerCase() === cleanedUsername || u.email.toLowerCase() === `${cleanedUsername}@app.com`
+  );
+
+  if (!user) {
+    return res.status(401).json({ error: "ไม่พบชื่อผู้ใช้งานนี้ในระบบค่ะ" });
+  }
+
+  if (user.passwordHash !== passwordHash) {
+    return res.status(401).json({ error: "รหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบอีกครั้งค่ะ" });
+  }
+
+  let couple: Couple | null = null;
+  if (user.coupleId && db.couples[user.coupleId]) {
+    couple = db.couples[user.coupleId];
+  } else {
+    const foundCouple = Object.values(db.couples).find(
+      (c) => c.partnerEmail?.toLowerCase() === user.email.toLowerCase()
+    );
+    if (foundCouple) {
+      user.coupleId = foundCouple.id;
+      couple = foundCouple;
+      db.users[user.email] = user;
+      saveDB(db);
+    }
+  }
+
+  return res.json({ user, couple });
+});
 
 // 1. Authenticate & Fetch Profile
 app.post("/api/auth/login", (req, res) => {

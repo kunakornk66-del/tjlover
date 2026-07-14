@@ -103,6 +103,85 @@ async function handleLocalFallback(url: string, options?: RequestInit): Promise<
   console.info(`[API Emulator] Mocking ${method} ${url}`);
 
   try {
+    // 0.1 POST /api/auth/register-username
+    if (method === 'POST' && url.startsWith('/api/auth/register-username')) {
+      const { username, passwordHash } = JSON.parse(options?.body as string || '{}');
+      if (!username || !passwordHash) {
+        return new MockResponse(400, { error: 'กรุณากรอกข้อมูลให้ครบถ้วนค่ะ' }) as any;
+      }
+      
+      const cleanedUsername = username.trim();
+      // Validate username: only English letters, numbers, and underscores allowed
+      const usernameRegex = /^[a-zA-Z0-9_]+$/;
+      if (!usernameRegex.test(cleanedUsername)) {
+        return new MockResponse(400, { error: 'ชื่อผู้ใช้งานต้องเป็นภาษาอังกฤษ ตัวเลข หรือเครื่องหมายขีดล่าง (_) เท่านั้นค่ะ' }) as any;
+      }
+
+      const mockEmail = `${cleanedUsername.toLowerCase()}@app.com`;
+      
+      // Check if username already exists (by checking mock email or username field)
+      const existingUser = Object.values(db.users).find(
+        (u) => u.username?.toLowerCase() === cleanedUsername.toLowerCase() || u.email.toLowerCase() === mockEmail
+      );
+      if (existingUser) {
+        return new MockResponse(400, { error: 'ชื่อผู้ใช้งานนี้ถูกใช้ไปแล้วค่ะ กรุณาเปลี่ยนชื่อใหม่นะคะ' }) as any;
+      }
+
+      // Create new user record
+      const newUser: CurrentUser = {
+        email: mockEmail,
+        username: cleanedUsername,
+        name: cleanedUsername,
+        passwordHash: passwordHash,
+        picture: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
+      };
+
+      db.users[mockEmail] = newUser;
+      saveLocalDB(db);
+
+      return new MockResponse(200, { success: true, message: 'สมัครสมาชิกสำเร็จแล้วค่ะ สามารถเข้าสู่ระบบได้ทันที!' }) as any;
+    }
+
+    // 0.2 POST /api/auth/login-username
+    if (method === 'POST' && url.startsWith('/api/auth/login-username')) {
+      const { username, passwordHash } = JSON.parse(options?.body as string || '{}');
+      if (!username || !passwordHash) {
+        return new MockResponse(400, { error: 'กรุณากรอกข้อมูลให้ครบถ้วนค่ะ' }) as any;
+      }
+
+      const cleanedUsername = username.trim().toLowerCase();
+      
+      // Find user
+      const user = Object.values(db.users).find(
+        (u) => u.username?.toLowerCase() === cleanedUsername || u.email.toLowerCase() === `${cleanedUsername}@app.com`
+      );
+
+      if (!user) {
+        return new MockResponse(401, { error: 'ไม่พบชื่อผู้ใช้งานนี้ในระบบค่ะ' }) as any;
+      }
+
+      if (user.passwordHash !== passwordHash) {
+        return new MockResponse(401, { error: 'รหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบอีกครั้งค่ะ' }) as any;
+      }
+
+      let couple: Couple | null = null;
+      if (user.coupleId && db.couples[user.coupleId]) {
+        couple = db.couples[user.coupleId];
+      } else {
+        const foundCouple = Object.values(db.couples).find(
+          (c) => c.partnerEmail?.toLowerCase() === user.email.toLowerCase()
+        );
+        if (foundCouple) {
+          user.coupleId = foundCouple.id;
+          couple = foundCouple;
+          db.users[user.email] = user;
+          saveLocalDB(db);
+        }
+      }
+
+      return new MockResponse(200, { user, couple }) as any;
+    }
+
     // 1. POST /api/auth/login
     if (method === 'POST' && url.startsWith('/api/auth/login')) {
       const { email, name, picture } = JSON.parse(options?.body as string || '{}');
