@@ -3,6 +3,7 @@ import { Heart, Sparkles, LogIn, Lock, Bell, CheckCircle2, User, Smile, MessageC
 import { motion, AnimatePresence } from 'motion/react';
 
 import { Memory, ChatMessage, CalendarEvent, MoodLog, RelationshipInfo, CurrentUser, Couple } from './types';
+import { appFetch, getLocalOnlyMode, setLocalOnlyMode } from './api';
 import AnniversarySection from './components/AnniversarySection';
 import CalendarSection from './components/CalendarSection';
 import MemoryBoxSection from './components/MemoryBoxSection';
@@ -105,25 +106,25 @@ export default function App() {
   // 4. Synchronization and fetching from backend Express API
   const fetchCoupleData = async (coupleId: string) => {
     try {
-      const res = await fetch(`/api/chats/${coupleId}`);
+      const res = await appFetch(`/api/chats/${coupleId}`);
       if (res.ok) {
         const chats = await res.json();
         setMessages(chats);
       }
 
-      const resMemories = await fetch(`/api/memories/${coupleId}`);
+      const resMemories = await appFetch(`/api/memories/${coupleId}`);
       if (resMemories.ok) {
         const mems = await resMemories.json();
         setMemories(mems);
       }
 
-      const resEvents = await fetch(`/api/events/${coupleId}`);
+      const resEvents = await appFetch(`/api/events/${coupleId}`);
       if (resEvents.ok) {
         const evs = await resEvents.json();
         setEvents(evs);
       }
 
-      const resMoods = await fetch(`/api/moods/${coupleId}`);
+      const resMoods = await appFetch(`/api/moods/${coupleId}`);
       if (resMoods.ok) {
         const moods = await resMoods.json();
         setMoodLogs(moods);
@@ -157,7 +158,7 @@ export default function App() {
       setEvents([]);
       setMoodLogs([]);
 
-      const response = await fetch('/api/auth/login', {
+      const response = await appFetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, name, picture }),
@@ -234,7 +235,7 @@ export default function App() {
     setIsSettingUpSpace(true);
 
     try {
-      const response = await fetch('/api/couple/create', {
+      const response = await appFetch('/api/couple/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -250,7 +251,7 @@ export default function App() {
         setRelationshipInfo(data.couple.relationshipInfo);
         
         // Push initial updates
-        await fetch(`/api/couple/update-info`, {
+        await appFetch(`/api/couple/update-info`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -285,7 +286,7 @@ export default function App() {
     setIsSettingUpSpace(true);
 
     try {
-      const response = await fetch('/api/couple/join', {
+      const response = await appFetch('/api/couple/join', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -320,7 +321,7 @@ export default function App() {
   const handleUpdateRelationshipInfo = async (info: RelationshipInfo) => {
     if (!currentUser || !currentUser.coupleId) return;
     try {
-      const response = await fetch('/api/couple/update-info', {
+      const response = await appFetch('/api/couple/update-info', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -342,7 +343,7 @@ export default function App() {
   const handleAddMemory = async (memory: Memory) => {
     if (!currentUser || !currentUser.coupleId) return;
     try {
-      const response = await fetch(`/api/memories/${currentUser.coupleId}`, {
+      const response = await appFetch(`/api/memories/${currentUser.coupleId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ memory }),
@@ -360,7 +361,7 @@ export default function App() {
   const handleDeleteMemory = async (id: string) => {
     if (!currentUser || !currentUser.coupleId) return;
     try {
-      const response = await fetch(`/api/memories/${currentUser.coupleId}/${id}`, {
+      const response = await appFetch(`/api/memories/${currentUser.coupleId}/${id}`, {
         method: 'DELETE',
       });
       if (response.ok) {
@@ -375,7 +376,7 @@ export default function App() {
   const handleUpdateMemory = async (id: string, updatedMemory: Partial<Memory>) => {
     if (!currentUser || !currentUser.coupleId) return;
     try {
-      const response = await fetch(`/api/memories/${currentUser.coupleId}/${id}`, {
+      const response = await appFetch(`/api/memories/${currentUser.coupleId}/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ memory: updatedMemory }),
@@ -392,7 +393,7 @@ export default function App() {
   const handleAddEvent = async (event: CalendarEvent) => {
     if (!currentUser || !currentUser.coupleId) return;
     try {
-      const response = await fetch(`/api/events/${currentUser.coupleId}`, {
+      const response = await appFetch(`/api/events/${currentUser.coupleId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ event }),
@@ -410,7 +411,7 @@ export default function App() {
   const handleDeleteEvent = async (id: string) => {
     if (!currentUser || !currentUser.coupleId) return;
     try {
-      const response = await fetch(`/api/events/${currentUser.coupleId}/${id}`, {
+      const response = await appFetch(`/api/events/${currentUser.coupleId}/${id}`, {
         method: 'DELETE',
       });
       if (response.ok) {
@@ -425,7 +426,7 @@ export default function App() {
   const handleUpdateEvent = async (id: string, updatedEvent: Partial<CalendarEvent>) => {
     if (!currentUser || !currentUser.coupleId) return;
     try {
-      const response = await fetch(`/api/events/${currentUser.coupleId}/${id}`, {
+      const response = await appFetch(`/api/events/${currentUser.coupleId}/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ event: updatedEvent }),
@@ -443,7 +444,7 @@ export default function App() {
     if (!currentUser || !currentUser.coupleId) return;
     const todayStr = new Date().toISOString().split('T')[0];
     try {
-      const response = await fetch(`/api/moods/${currentUser.coupleId}`, {
+      const response = await appFetch(`/api/moods/${currentUser.coupleId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -471,7 +472,7 @@ export default function App() {
       mediaType,
     };
     try {
-      const response = await fetch(`/api/chats/${currentUser.coupleId}`, {
+      const response = await appFetch(`/api/chats/${currentUser.coupleId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: messagePayload }),
@@ -486,7 +487,7 @@ export default function App() {
 
   const handleUpdatePartnerEmail = async (partnerEmail: string) => {
     if (!currentUser || !currentUser.coupleId) return;
-    const response = await fetch('/api/couple/set-partner', {
+    const response = await appFetch('/api/couple/set-partner', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -503,7 +504,7 @@ export default function App() {
   const handleResetFactory = async () => {
     if (!currentUser) return;
     try {
-      await fetch('/api/couple/reset', {
+      await appFetch('/api/couple/reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
