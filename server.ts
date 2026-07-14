@@ -100,26 +100,6 @@ function loadDB(): DB {
       const db = JSON.parse(data);
       if (!db.users) db.users = {};
       if (!db.couples) db.couples = {};
-      let hasMock = false;
-      if (db.couples) {
-        for (const cid of Object.keys(db.couples)) {
-          const couple = db.couples[cid];
-          if (couple.memories && couple.memories.some((m: any) => m.id === "mem-1" || (m.title && m.title.includes("เดทแรก")))) {
-            hasMock = true;
-            break;
-          }
-        }
-      }
-      if (hasMock) {
-        console.log("Mock data detected in DB, wiping to ensure pristine state for the user.");
-        if (db.users) {
-          for (const email of Object.keys(db.users)) {
-            delete db.users[email].coupleId;
-          }
-        }
-        db.couples = {};
-        fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), "utf-8");
-      }
       return db;
     }
   } catch (error) {
@@ -359,7 +339,18 @@ app.post("/api/couple/join", (req, res) => {
 
   const db = loadDB();
   const cleanedEmail = email.toLowerCase().trim();
-  const cleanedCode = pairingCode.toUpperCase().trim();
+  
+  // Normalize code: remove all spaces, make uppercase, replace dashes temporarily to parse
+  let cleanedCode = pairingCode.toUpperCase().replace(/\s+/g, "").trim();
+  
+  // If user only types the 4 characters (e.g. "MGPH"), prepend "LOVE-"
+  if (cleanedCode.length === 4) {
+    cleanedCode = "LOVE-" + cleanedCode;
+  } 
+  // If user types "LOVEMGPH" (8 chars, starts with LOVE), format it to "LOVE-MGPH"
+  else if (cleanedCode.length === 8 && cleanedCode.startsWith("LOVE")) {
+    cleanedCode = "LOVE-" + cleanedCode.substring(4);
+  }
 
   const user = db.users[cleanedEmail];
   if (!user) {
@@ -367,9 +358,9 @@ app.post("/api/couple/join", (req, res) => {
   }
 
   // Find the couple with the given pairing code
-  const couple = Object.values(db.couples).find((c) => c.pairingCode === cleanedCode);
+  const couple = Object.values(db.couples).find((c) => c.pairingCode.toUpperCase().trim() === cleanedCode);
   if (!couple) {
-    return res.status(404).json({ error: "รหัสโปรแกรมคู่รักไม่ถูกต้อง กรุณาตรวจสอบอีกครั้งค่ะ" });
+    return res.status(404).json({ error: "รหัสโปรแกรมคู่รักไม่ถูกต้อง กรุณาตรวจสอบอีกครั้งค่ะ (เคล็ดลับ: สามารถพิมพ์รหัส 4 ตัวหลัง เช่น MGPH ได้เช่นกันค่ะ)" });
   }
 
   // Bind partner email and link the user

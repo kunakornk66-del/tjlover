@@ -1037,13 +1037,24 @@ export default function App() {
                   <p className="text-[10px] text-[#A89090]">ใส่รหัสโปรแกรมที่แฟนแชร์มาเพื่อเข้าร่วมทันทีจ้า</p>
                 </div>
 
+                <div className="bg-[#FFF9F5] border border-[#FFD9D9] rounded-xl p-3.5 text-[11px] text-[#A89090] space-y-2">
+                  <p className="font-extrabold text-[#FF8E8E] flex items-center gap-1">
+                    <span>💡 ขั้นตอนการเชื่อมต่อสำหรับแฟน:</span>
+                  </p>
+                  <ol className="list-decimal pl-4.5 space-y-1 font-semibold text-left">
+                    <li>ให้แฟนสมัครสมาชิกใหม่ก่อน (โดยใช้ไอดีและรหัสผ่านของแฟนเอง)</li>
+                    <li>หลังจากแฟนล็อกอินเข้ามาแล้ว ให้เลือกแท็บ <strong className="text-[#FF8E8E]">"เข้าร่วมพื้นที่เดิม 🔑"</strong> นี้</li>
+                    <li>กรอกรหัสห้อง (สามารถพิมพ์สั้นๆ แค่ 4 ตัวหลัง เช่น <strong className="text-[#FF8E8E]">MGPH</strong> หรือกรอกรหัสเต็ม <strong className="text-[#FF8E8E]">LOVE-MGPH</strong> ก็เข้าได้เหมือนกันค่ะ!)</li>
+                  </ol>
+                </div>
+
                 <div>
                   <label className="block text-[10px] font-bold text-gray-500 mb-1">กรอกรหัสโปรแกรมคู่รัก (Pairing Code):</label>
                   <input
                     type="text"
                     value={pairingCodeInput}
                     onChange={(e) => setPairingCodeInput(e.target.value.toUpperCase())}
-                    placeholder="เช่น LOVE-ABCD"
+                    placeholder="เช่น MGPH หรือ LOVE-MGPH"
                     className="w-full text-center text-sm font-black p-3.5 rounded-xl border-2 border-[#F0E6DD] focus:border-[#FF8E8E] outline-hidden bg-[#FFF9F5] text-[#FF8E8E] font-mono tracking-widest placeholder:text-gray-300"
                     required
                   />
