@@ -529,7 +529,7 @@ export default function App() {
       }
     } catch (err) {
       console.error(err);
-      setAuthMessage({ text: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์เพื่อสมัครสมาชิกได้ค่ะ', type: 'error' });
+      setAuthMessage({ text: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์เพื่อสมัครสมาชิกได้ค่ะ (เซิร์ฟเวอร์กำลังรีสตาร์ทเพื่อเตรียมระบบใหม่ กรุณารอประมาณ 5-10 วินาทีแล้วลองกดสมัครใหม่อีกครั้งนะคะ 💖)', type: 'error' });
     } finally {
       setIsLoggingIn(false);
     }
@@ -582,7 +582,7 @@ export default function App() {
       }
     } catch (err) {
       console.error(err);
-      setAuthMessage({ text: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ล็อกอินได้ค่ะ', type: 'error' });
+      setAuthMessage({ text: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ล็อกอินได้ค่ะ (เซิร์ฟเวอร์กำลังเริ่มต้นระบบใหม่ กรุณารอประมาณ 5-10 วินาทีแล้วลองใหม่อีกครั้งนะคะ 💖)', type: 'error' });
     } finally {
       setIsLoggingIn(false);
     }
