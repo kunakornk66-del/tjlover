@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Camera, Video, FileText, Heart, Plus, Trash2, Image as ImageIcon, Sparkles, Pencil, X, ChevronLeft, ChevronRight, Eye, FolderHeart, BookOpen, Save, FileEdit } from 'lucide-react';
+import { Camera, Video, FileText, Heart, Plus, Trash2, Image as ImageIcon, Sparkles, Pencil, X, ChevronLeft, ChevronRight, Eye, FolderHeart, BookOpen, Save, FileEdit, Download } from 'lucide-react';
 import { Memory } from '../types';
 
 interface MemoryBoxSectionProps {
@@ -408,6 +408,23 @@ export default function MemoryBoxSection({
                             <span className="font-mono">
                               {new Date(album.date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
                             </span>
+                            {coverImage && (
+                              <button
+                                id={`btn-download-direct-video-${album.id}`}
+                                onClick={() => {
+                                  const link = document.createElement('a');
+                                  link.href = coverImage;
+                                  link.download = `love-video-${Date.now()}.mp4`;
+                                  document.body.appendChild(link);
+                                  link.click();
+                                  document.body.removeChild(link);
+                                }}
+                                className="p-1 text-gray-400 hover:text-emerald-500 hover:bg-emerald-50 rounded-full transition-colors cursor-pointer"
+                                title="ดาวน์โหลดวิดีโอนี้"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                             <button
                               id={`btn-delete-direct-video-${album.id}`}
                               onClick={() => {
@@ -596,6 +613,22 @@ export default function MemoryBoxSection({
                             <span className="p-2 bg-white/95 rounded-full text-gray-700 hover:text-[#FF8E8E] shadow-md">
                               <Eye className="w-4 h-4" />
                             </span>
+                            <button
+                              id={`btn-download-media-${idx}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const link = document.createElement('a');
+                                link.href = url;
+                                link.download = `love-album-media-${idx + 1}-${Date.now()}.${album.type === 'photo_album' ? 'jpg' : 'mp4'}`;
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+                              }}
+                              className="p-2 bg-white/95 text-gray-700 rounded-full hover:text-emerald-500 shadow-md transition-colors cursor-pointer"
+                              title="ดาวน์โหลดไฟล์นี้"
+                            >
+                              <Download className="w-4 h-4" />
+                            </button>
                             <button
                               id={`btn-delete-media-${idx}`}
                               onClick={(e) => {
@@ -984,16 +1017,34 @@ export default function MemoryBoxSection({
                 <span className="text-xs font-bold bg-black/60 px-3 py-1.5 rounded-full backdrop-blur-xs">
                   {album.title} ({lightboxIndex + 1} / {mediaUrls.length})
                 </span>
-                <button
-                  id="btn-close-lightbox"
-                  onClick={() => {
-                    setLightboxIndex(null);
-                    setLightboxAlbumId(null);
-                  }}
-                  className="p-2 bg-black/60 rounded-full hover:bg-gray-800 pointer-events-auto cursor-pointer"
-                >
-                  <X className="w-5 h-5 text-white" />
-                </button>
+                <div className="flex items-center gap-2 pointer-events-auto">
+                  <button
+                    id="btn-download-lightbox"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const link = document.createElement('a');
+                      link.href = currentUrl;
+                      link.download = `love-memory-${album.type === 'photo_album' ? 'photo' : 'video'}-${Date.now()}.${album.type === 'photo_album' ? 'jpg' : 'mp4'}`;
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                    }}
+                    className="p-2 bg-black/60 rounded-full hover:bg-gray-800 text-white cursor-pointer transition-colors"
+                    title="ดาวน์โหลดลงเครื่อง"
+                  >
+                    <Download className="w-5 h-5 text-white" />
+                  </button>
+                  <button
+                    id="btn-close-lightbox"
+                    onClick={() => {
+                      setLightboxIndex(null);
+                      setLightboxAlbumId(null);
+                    }}
+                    className="p-2 bg-black/60 rounded-full hover:bg-gray-800 pointer-events-auto cursor-pointer"
+                  >
+                    <X className="w-5 h-5 text-white" />
+                  </button>
+                </div>
               </div>
 
               {/* Prev button */}

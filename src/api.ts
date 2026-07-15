@@ -564,26 +564,38 @@ async function handleLocalFallback(url: string, options?: RequestInit): Promise<
 
 // Global fetch substitute
 export async function appFetch(url: string, options?: RequestInit): Promise<Response> {
-  const isLocal = getLocalOnlyMode();
+  // Force restore connection by clearing any stale local_only_mode from localStorage
+  if (typeof window !== 'undefined' && localStorage.getItem('local_only_mode') === 'true') {
+    localStorage.removeItem('local_only_mode');
+  }
 
-  if (!isLocal) {
-    try {
-      const res = await window.fetch(url, options);
-      // If Vercel gives standard static routing (fails API routes with 404 or index.html)
-      const isHtmlResponse = res.headers.get('content-type')?.includes('text/html');
-      
-      if (res.status === 404 || isHtmlResponse) {
-        console.warn(`Server endpoint for ${url} is not available (HTML/404 received), switching to client fallback mode.`);
-        setLocalOnlyMode(true);
-        return await handleLocalFallback(url, options);
+  const isAuthRoute = url.includes('/api/auth/');
+
+  try {
+    const res = await window.fetch(url, options);
+    const isHtmlResponse = res.headers.get('content-type')?.includes('text/html');
+    
+    // Auth routes should never fallback to mock local storage if the server answered with an API status code
+    if (isAuthRoute) {
+      if (isHtmlResponse || res.status === 404) {
+        throw new Error(`Server returned HTML response or 404 for auth route ${url}`);
       }
       return res;
-    } catch (err) {
-      console.warn(`Express backend offline for ${url}, switching to client fallback mode.`, err);
-      setLocalOnlyMode(true);
+    }
+
+    if (res.status === 404 || isHtmlResponse) {
+      console.warn(`Server endpoint for ${url} is not available (HTML/404 received), returning local fallback.`);
       return await handleLocalFallback(url, options);
     }
-  } else {
+    return res;
+  } catch (err) {
+    if (isAuthRoute) {
+      console.error(`Express backend offline or failed for auth route ${url}:`, err);
+      // Propagate the actual error so the UI can notify the user that the server is offline
+      // rather than silently falling back and creating a localized ghost account.
+      throw err;
+    }
+    console.warn(`Express backend offline for ${url}, returning local fallback.`, err);
     return await handleLocalFallback(url, options);
   }
 }

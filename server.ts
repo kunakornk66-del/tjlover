@@ -155,6 +155,59 @@ function createDefaultCouple(id: string, ownerEmail: string, partnerEmail?: stri
 
 // ------------------- API ROUTES -------------------
 
+// 0.0 Migrate Local DB to Server
+app.post("/api/auth/migrate-local-db", (req, res) => {
+  const { users, couples } = req.body;
+  if (!users && !couples) {
+    return res.status(400).json({ error: "Invalid migration data" });
+  }
+
+  const db = loadDB();
+  let migratedUsersCount = 0;
+  let migratedCouplesCount = 0;
+
+  if (users) {
+    for (const [key, user] of Object.entries(users)) {
+      const cleanedKey = key.toLowerCase().trim();
+      if (!db.users[cleanedKey]) {
+        db.users[cleanedKey] = user as User;
+        migratedUsersCount++;
+      } else {
+        const existing = db.users[cleanedKey];
+        if (!existing.passwordHash && (user as User).passwordHash) {
+          existing.passwordHash = (user as User).passwordHash;
+        }
+        if (!existing.coupleId && (user as User).coupleId) {
+          existing.coupleId = (user as User).coupleId;
+        }
+        if (!existing.username && (user as User).username) {
+          existing.username = (user as User).username;
+        }
+      }
+    }
+  }
+
+  if (couples) {
+    for (const [key, couple] of Object.entries(couples)) {
+      if (!db.couples[key]) {
+        db.couples[key] = couple as Couple;
+        migratedCouplesCount++;
+      }
+    }
+  }
+
+  if (migratedUsersCount > 0 || migratedCouplesCount > 0) {
+    saveDB(db);
+  }
+
+  return res.json({
+    success: true,
+    migratedUsersCount,
+    migratedCouplesCount,
+    message: `ซิงค์บัญชีและห้องคู่รักเรียบร้อยแล้วค่ะ! ย้ายผู้ใช้ ${migratedUsersCount} คน และห้องรัก ${migratedCouplesCount} ห้องเข้าสู่ระบบฐานข้อมูลคลาวด์แล้ว`
+  });
+});
+
 // Helper to find a user by email or username case-insensitively
 function findUserInDB(db: DB, input: string): User | undefined {
   if (!input) return undefined;

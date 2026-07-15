@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 
 import { Memory, ChatMessage, CalendarEvent, MoodLog, RelationshipInfo, CurrentUser, Couple } from './types';
 import { appFetch, getLocalOnlyMode, setLocalOnlyMode } from './api';
+import { applyTheme } from './theme';
 import AnniversarySection from './components/AnniversarySection';
 import CalendarSection from './components/CalendarSection';
 import MemoryBoxSection from './components/MemoryBoxSection';
@@ -635,9 +636,59 @@ export default function App() {
 
   // Initial load if user has been authenticated in previous session
   useEffect(() => {
+    // Apply saved theme on app load
+    const savedTheme = localStorage.getItem('couple_theme') || 'pastel-pink';
+    applyTheme(savedTheme);
+
     if (currentUser) {
       handleLogin(currentUser.email, currentUser.name, currentUser.picture);
     }
+  }, []);
+
+  // Automatically migrate any client-only local_couple_db database contents to server if detected
+  useEffect(() => {
+    const migrateLocalData = async () => {
+      try {
+        const localDataRaw = localStorage.getItem('local_couple_db');
+        if (!localDataRaw) return;
+
+        const localData = JSON.parse(localDataRaw);
+        if (
+          (localData.users && Object.keys(localData.users).length > 0) ||
+          (localData.couples && Object.keys(localData.couples).length > 0)
+        ) {
+          console.info('[Migration] Found local database, migrating to server...');
+          const response = await appFetch('/api/auth/migrate-local-db', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              users: localData.users,
+              couples: localData.couples
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            console.info('[Migration] Migration successful:', data);
+            
+            // Clean up migrated local data so we don't migrate on every reload
+            localStorage.removeItem('local_couple_db');
+            
+            // Trigger a nice success banner notification
+            triggerNotification(`🌟 ระบบซิงค์ข้อมูลคอมพิวเตอร์ของคุณไปยังระบบหลักเสร็จสมบูรณ์แล้วค่ะ! แฟนสามารถใช้บัญชีเดียวกันล็อกอินบนโทรศัพท์ได้เลยนะคะ`, 'love');
+            
+            // Also force refresh active user's session from the server
+            if (currentUser) {
+              handleLogin(currentUser.email, currentUser.name, currentUser.picture);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[Migration] Failed to migrate local database:', err);
+      }
+    };
+
+    migrateLocalData();
   }, []);
 
   // Log Out Action

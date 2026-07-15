@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Shield, Cloud, Download, Upload, CheckCircle2, Lock, Key, RefreshCw, AlertTriangle, FileJson, LogOut, User, Link, Trash2, ShieldAlert, Copy, Bell } from 'lucide-react';
+import { Shield, Cloud, Download, Upload, CheckCircle2, Lock, Key, RefreshCw, AlertTriangle, FileJson, LogOut, User, Link, Trash2, ShieldAlert, Copy, Bell, Palette } from 'lucide-react';
 import { Memory, ChatMessage, CalendarEvent, MoodLog, RelationshipInfo, CurrentUser, Couple } from '../types';
+import { applyTheme } from '../theme';
 
 interface SecuritySectionProps {
   memories: Memory[];
@@ -53,6 +54,17 @@ export default function SecuritySection({
   const [partnerEmailInput, setPartnerEmailInput] = useState(currentCouple?.partnerEmail || '');
   const [isUpdatingPartner, setIsUpdatingPartner] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+  const [activeTheme, setActiveTheme] = useState<string>(() => {
+    return localStorage.getItem('couple_theme') || 'pastel-pink';
+  });
+
+  const handleThemeChange = (newTheme: string) => {
+    setActiveTheme(newTheme);
+    localStorage.setItem('couple_theme', newTheme);
+    applyTheme(newTheme);
+    onTriggerNotification('🎨 เปลี่ยนธีมสีห้องรักของสองเราเรียบร้อยแล้วค่ะ!');
+  };
 
   // Handle Download Encrypted JSON File
   const handleExportData = () => {
@@ -565,6 +577,74 @@ export default function SecuritySection({
                   ⚠️ ปัจจุบันสิทธิ์การแจ้งเตือนถูกปิดอยู่ หากต้องการเปิดใช้งาน กรุณากดปุ่มไอคอนรูปแม่กุญแจ (Lock) บนแถบป้อนที่อยู่เว็บ (URL) ของคุณ และปรับแต่งสิทธิ์ของเว็บนี้เพื่อเปิดอนุญาต "การแจ้งเตือน (Notifications)" นะคะ!
                 </p>
               )}
+            </div>
+          </div>
+        </div>
+
+        {/* Dynamic Theme Settings Card */}
+        <div className="kawaii-card p-5 bg-white space-y-4">
+          <div className="flex items-center gap-2.5 mb-2">
+            <span className="p-2.5 bg-[#FFEFEF] rounded-full text-[#FF8E8E]">
+              <Palette className="w-5 h-5" />
+            </span>
+            <div>
+              <h3 className="font-bold text-[#5D4E4E] text-sm">ธีมสีห้องสองเรา (Room Theme) 🎨</h3>
+              <p className="text-xs text-[#A89090]">เลือกสไตล์และโทนสีที่ชื่นชอบร่วมกันเพื่อสร้างบรรยากาศที่อบอุ่นที่สุด</p>
+            </div>
+          </div>
+
+          <div className="p-4 bg-[#FFF9F5] border border-[#F0E6DD] rounded-2xl space-y-3.5">
+            <p className="text-xs font-bold text-[#5D4E4E] mb-1">เลือกธีมสีประจำห้องคู่รักของคุณ:</p>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Pastel Pink */}
+              <button
+                type="button"
+                id="theme-pastel-pink"
+                onClick={() => handleThemeChange('pastel-pink')}
+                className={`p-3 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center gap-2 ${
+                  activeTheme === 'pastel-pink'
+                    ? 'border-[#FF8E8E] bg-[#FFEFEF] text-[#FF8E8E] ring-2 ring-[#FF8E8E]/30 font-bold scale-[1.02]'
+                    : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
+                }`}
+              >
+                <span className="w-6 h-6 rounded-full bg-[#FF8E8E] border border-white shadow-xs" />
+                <span className="text-xs">Pastel Pink 🌸</span>
+              </button>
+
+              {/* Soft Blue */}
+              <button
+                type="button"
+                id="theme-soft-blue"
+                onClick={() => handleThemeChange('soft-blue')}
+                className={`p-3 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center gap-2 ${
+                  activeTheme === 'soft-blue'
+                    ? 'border-[#8CC0DE] bg-[#F0F8FF] text-[#8CC0DE] ring-2 ring-[#8CC0DE]/30 font-bold scale-[1.02]'
+                    : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
+                }`}
+              >
+                <span className="w-6 h-6 rounded-full bg-[#8CC0DE] border border-white shadow-xs" />
+                <span className="text-xs">Soft Blue 💎</span>
+              </button>
+
+              {/* Warm Lavender */}
+              <button
+                type="button"
+                id="theme-warm-lavender"
+                onClick={() => handleThemeChange('warm-lavender')}
+                className={`p-3 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center gap-2 ${
+                  activeTheme === 'warm-lavender'
+                    ? 'border-[#BA94EB] bg-[#FAF5FF] text-[#BA94EB] ring-2 ring-[#BA94EB]/30 font-bold scale-[1.02]'
+                    : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
+                }`}
+              >
+                <span className="w-6 h-6 rounded-full bg-[#BA94EB] border border-white shadow-xs" />
+                <span className="text-xs">Warm Lavender 🔮</span>
+              </button>
+            </div>
+
+            <div className="text-[10px] text-gray-400 font-semibold leading-relaxed">
+              *เคล็ดลับ: โทนสีจะได้รับการปรับเปลี่ยนอย่างกลมกลืนและแสดงผลเหมือนกันในทุกฟังก์ชันการใช้งานของโปรแกรม (รวมถึงประวัติแชท ความทรงจำ และปฏิทินสองเรา) โดยจะบันทึกสิทธิ์ลงเครื่องให้อัตโนมัติเลยค่ะ!
             </div>
           </div>
         </div>
