@@ -74,19 +74,21 @@ export default function App() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   // Custom Username & Password Auth states
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [authMode, setAuthMode] = useState<'email' | 'login' | 'register'>('email');
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [signUpUsername, setSignUpUsername] = useState('');
   const [signUpPassword, setSignUpPassword] = useState('');
   const [authMessage, setAuthMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  const handleSwitchAuthMode = (mode: 'login' | 'register') => {
+  const handleSwitchAuthMode = (mode: 'email' | 'login' | 'register') => {
     setAuthMode(mode);
     setLoginUsername('');
     setLoginPassword('');
     setSignUpUsername('');
     setSignUpPassword('');
+    setLoginEmail('');
+    setLoginName('');
     setAuthMessage(null);
   };
 
@@ -480,6 +482,36 @@ export default function App() {
   // Hash function - always use deterministic pure-JS fallback for 100% consistency across iframes and secure/non-secure browser contexts
   const computeHash = async (text: string): Promise<string> => {
     return sha256Fallback(text);
+  };
+
+  // Instant Email Login & Automatic Register
+  const handleEmailLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthMessage(null);
+
+    const emailTrimmed = loginEmail.trim();
+    if (!emailTrimmed) {
+      setAuthMessage({ text: 'กรุณากรอกอีเมลด้วยนะคะ', type: 'error' });
+      return;
+    }
+
+    // Basic email validation regex
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(emailTrimmed)) {
+      setAuthMessage({ text: 'รูปแบบอีเมลไม่ถูกต้องค่ะ กรุณาตรวจสอบอีกครั้งนะคะ', type: 'error' });
+      return;
+    }
+
+    if (emailTrimmed.toLowerCase().endsWith('@app.com')) {
+      setAuthMessage({
+        text: 'ไม่สามารถใช้อีเมลนามสกุล @app.com เพื่อล็อกอินด่วนได้ค่ะ กรุณาใช้แถบ "ชื่อผู้ใช้งาน" หรือใช้อีเมลจริงทั่วไปของคุณ (@gmail.com) นะคะ',
+        type: 'error'
+      });
+      return;
+    }
+
+    // Submit using the existing stable handleLogin helper
+    await handleLogin(emailTrimmed, loginName.trim() || undefined);
   };
 
   // Sign Up / Register using Username and Password
@@ -1048,34 +1080,45 @@ export default function App() {
               <h1 className="font-extrabold text-2xl text-[#5D4E4E] tracking-tight">
                 Couple Memory Hub 💖
               </h1>
-              <p className="text-xs text-[#A89090] max-w-sm mx-auto leading-relaxed">
-                เซฟโซนรักแบบสองเราแชร์บันทึก แชท และความทรงจำร่วมกันอย่างปลอดภัย ลงทะเบียนด้วยชื่อผู้ใช้งานและรหัสผ่านได้ทันทีค่ะ
+              <p className="text-xs text-[#A89090] max-w-sm mx-auto leading-relaxed animate-pulse">
+                เซฟโซนแชร์บันทึก แชท และความทรงจำสองเรา 🧸 แนะนำแท็บ <strong className="text-[#FF8E8E]">"📧 ล็อกอินด่วน"</strong> เพื่อเข้าใช้งานผ่านอีเมลได้ทันที ง่ายและปลอดภัยที่สุดค่ะ!
               </p>
             </div>
 
             {/* Premium Tab Bar */}
-            <div className="grid grid-cols-2 p-1 bg-gray-100 rounded-2xl border border-[#F0E6DD]/60">
+            <div className="grid grid-cols-3 p-1 bg-gray-100 rounded-2xl border border-[#F0E6DD]/60 gap-1">
               <button
                 type="button"
-                onClick={() => handleSwitchAuthMode('login')}
-                className={`py-2 text-xs font-black rounded-xl transition-all cursor-pointer ${
-                  authMode === 'login'
-                    ? 'bg-white text-[#FF8E8E] shadow-sm'
+                onClick={() => handleSwitchAuthMode('email')}
+                className={`py-2 px-1 text-[10px] font-black rounded-xl transition-all cursor-pointer truncate text-center ${
+                  authMode === 'email'
+                    ? 'bg-white text-[#FF8E8E] shadow-xs'
                     : 'text-[#A89090] hover:text-[#5D4E4E]'
                 }`}
               >
-                🔑 เข้าสู่ระบบ (Sign In)
+                📧 ล็อกอินด่วน
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSwitchAuthMode('login')}
+                className={`py-2 px-1 text-[10px] font-black rounded-xl transition-all cursor-pointer truncate text-center ${
+                  authMode === 'login'
+                    ? 'bg-white text-[#FF8E8E] shadow-xs'
+                    : 'text-[#A89090] hover:text-[#5D4E4E]'
+                }`}
+              >
+                🔑 ชื่อผู้ใช้เดิม
               </button>
               <button
                 type="button"
                 onClick={() => handleSwitchAuthMode('register')}
-                className={`py-2 text-xs font-black rounded-xl transition-all cursor-pointer ${
+                className={`py-2 px-1 text-[10px] font-black rounded-xl transition-all cursor-pointer truncate text-center ${
                   authMode === 'register'
-                    ? 'bg-white text-[#FF8E8E] shadow-sm'
+                    ? 'bg-white text-[#FF8E8E] shadow-xs'
                     : 'text-[#A89090] hover:text-[#5D4E4E]'
                 }`}
               >
-                📝 สมัครสมาชิกใหม่ (Sign Up)
+                📝 สมัครใหม่
               </button>
             </div>
 
@@ -1098,7 +1141,58 @@ export default function App() {
             )}
 
             {/* Anti-Autofill protection and forms */}
-            {authMode === 'login' ? (
+            {authMode === 'email' ? (
+              <form
+                onSubmit={handleEmailLoginSubmit}
+                className="space-y-4 text-left bg-[#FFF9F5] p-5 sm:p-6 rounded-2xl border border-[#F0E6DD]"
+                autoComplete="off"
+              >
+                <div className="flex items-center gap-2 mb-2 justify-center">
+                  <span className="w-6 h-6 bg-[#FFEFEF] rounded-full flex items-center justify-center text-xs text-[#FF8E8E]">📧</span>
+                  <p className="text-sm font-black text-[#5D4E4E] tracking-tight">เข้าใช้งานด่วนด้วยอีเมล</p>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#A89090] uppercase mb-1">
+                      อีเมลของคุณ (Your Email): <span className="text-rose-400">*</span>
+                    </label>
+                    <input
+                      type="email"
+                      value={loginEmail}
+                      onChange={(e) => setLoginEmail(e.target.value)}
+                      placeholder="kunakorn.k66@gmail.com"
+                      className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] focus:ring-1 focus:ring-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E] font-medium placeholder:text-gray-300 shadow-2xs"
+                      required
+                    />
+                    <span className="block text-[10px] text-gray-400 mt-1.5 font-medium">
+                      * ระบบจะล็อกอินหรือสมัครสมาชิกให้ทันทีโดยไม่มีพาสเวิร์ด (ถ้าระบุอีเมลเดิม ข้อมูลเดิมทั้งหมดจะถูกดึงกลับมาครบถ้วนค่ะ)
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#A89090] uppercase mb-1">
+                      ชื่อเล่นของคุณ (Nickname - สำหรับสมาชิกใหม่):
+                    </label>
+                    <input
+                      type="text"
+                      value={loginName}
+                      onChange={(e) => setLoginName(e.target.value)}
+                      placeholder="กรอกชื่อเล่นของคุณ (พี่หมี)"
+                      className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] focus:ring-1 focus:ring-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E] font-medium placeholder:text-gray-300 shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isLoggingIn}
+                  className="w-full py-3 mt-2 bg-[#FF8E8E] hover:bg-[#FF8E8E]/90 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-all active:scale-[0.98]"
+                >
+                  {isLoggingIn ? 'กำลังดำเนินการ...' : 'เข้าสู่ระบบ / เริ่มต้นใช้งานด่วน 💖'}
+                </button>
+              </form>
+            ) : authMode === 'login' ? (
               <form
                 onSubmit={handleUsernameLogin}
                 className="space-y-4 text-left bg-[#FFF9F5] p-5 sm:p-6 rounded-2xl border border-[#F0E6DD]"
@@ -1363,7 +1457,7 @@ export default function App() {
                     type="email"
                     value={partnerEmail}
                     onChange={(e) => setPartnerEmail(e.target.value)}
-                    placeholder="เช่น sweety-partner@gmail.com (เลือกใส่ภายหลังได้)"
+                    placeholder="sweety-partner@gmail.com (เลือกใส่ภายหลังได้)"
                     className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E]"
                   />
                 </div>
@@ -1391,7 +1485,7 @@ export default function App() {
                   <ol className="list-decimal pl-4.5 space-y-1 font-semibold text-left">
                     <li>ให้แฟนสมัครสมาชิกและเข้าสู่ระบบก่อน</li>
                     <li>หลังจากแฟนล็อกอินเข้ามาแล้ว แฟนจะสร้างห้องคู่รักขึ้นมา</li>
-                    <li>คุณเพียงแค่พิมพ์ <strong className="text-[#FF8E8E]">ชื่อผู้ใช้งาน (Username)</strong> ของแฟนคุณ หรือรหัสคู่รัก 4 ตัว (เช่น <strong className="text-[#FF8E8E]">MGPH</strong>) ก็เชื่อมต่อเข้ารักเดียวกันได้ทันทีโดยไม่ต้องจำรหัสยาวๆ เลยค่ะ!</li>
+                    <li>คุณเพียงแค่พิมพ์ <strong className="text-[#FF8E8E]">ชื่อผู้ใช้งาน (Username)</strong> ของแฟนคุณ หรือรหัสคู่รัก 4 ตัว (<strong className="text-[#FF8E8E]">MGPH</strong>) ก็เชื่อมต่อเข้ารักเดียวกันได้ทันทีโดยไม่ต้องจำรหัสยาวๆ เลยค่ะ!</li>
                   </ol>
                 </div>
 
@@ -1401,7 +1495,7 @@ export default function App() {
                     type="text"
                     value={pairingCodeInput}
                     onChange={(e) => setPairingCodeInput(e.target.value)}
-                    placeholder="เช่น ชื่อผู้ใช้งานของแฟน หรือ LOVE-MGPH"
+                    placeholder="ชื่อผู้ใช้งานของแฟน หรือ LOVE-MGPH"
                     className="w-full text-center text-sm font-black p-3.5 rounded-xl border-2 border-[#F0E6DD] focus:border-[#FF8E8E] outline-hidden bg-[#FFF9F5] text-[#FF8E8E] font-sans tracking-wide placeholder:text-gray-300 placeholder:font-normal"
                     required
                     autoComplete="off"
