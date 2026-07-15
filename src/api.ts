@@ -564,9 +564,10 @@ async function handleLocalFallback(url: string, options?: RequestInit): Promise<
 
 // Global fetch substitute
 export async function appFetch(url: string, options?: RequestInit): Promise<Response> {
-  // Force restore connection by clearing any stale local_only_mode from localStorage
-  if (typeof window !== 'undefined' && localStorage.getItem('local_only_mode') === 'true') {
-    localStorage.removeItem('local_only_mode');
+  // If Local-Only Mode is active, immediately route all API requests to the local database emulator
+  if (getLocalOnlyMode()) {
+    console.info(`[Offline Mode] Intercepting fetch for ${url} to local emulator`);
+    return await handleLocalFallback(url, options);
   }
 
   const isAuthRoute = url.includes('/api/auth/');
@@ -575,10 +576,11 @@ export async function appFetch(url: string, options?: RequestInit): Promise<Resp
     const res = await window.fetch(url, options);
     const isHtmlResponse = res.headers.get('content-type')?.includes('text/html');
     
-    // Auth routes should never fallback to mock local storage if the server answered with an API status code
+    // Auth routes fallback to local emulator if the server is offline or fails
     if (isAuthRoute) {
-      if (isHtmlResponse || res.status === 404) {
-        throw new Error(`Server returned HTML response or 404 for auth route ${url}`);
+      if (isHtmlResponse || res.status === 404 || res.status >= 500) {
+        console.warn(`Server returned HTML response or error for auth route ${url}, falling back to local emulator.`);
+        return await handleLocalFallback(url, options);
       }
       return res;
     }
@@ -589,12 +591,6 @@ export async function appFetch(url: string, options?: RequestInit): Promise<Resp
     }
     return res;
   } catch (err) {
-    if (isAuthRoute) {
-      console.error(`Express backend offline or failed for auth route ${url}:`, err);
-      // Propagate the actual error so the UI can notify the user that the server is offline
-      // rather than silently falling back and creating a localized ghost account.
-      throw err;
-    }
     console.warn(`Express backend offline for ${url}, returning local fallback.`, err);
     return await handleLocalFallback(url, options);
   }

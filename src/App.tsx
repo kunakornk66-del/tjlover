@@ -81,6 +81,26 @@ export default function App() {
   const [signUpPassword, setSignUpPassword] = useState('');
   const [authMessage, setAuthMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
+  const [isOfflineMode, setIsOfflineMode] = useState(getLocalOnlyMode());
+
+  // Simple quick/unified login mode states
+  const [simpleMode, setSimpleMode] = useState<'create' | 'join'>('create');
+  const [simpleYourName, setSimpleYourName] = useState('');
+  const [simplePartnerName, setSimplePartnerName] = useState('');
+  const [simpleRoomCode, setSimpleRoomCode] = useState('');
+  const [simpleAnniversary, setSimpleAnniversary] = useState(() => new Date().toISOString().split('T')[0]);
+
+  const handleToggleOfflineMode = (enable: boolean) => {
+    setLocalOnlyMode(enable);
+    setIsOfflineMode(enable);
+    setAuthMessage({
+      text: enable
+        ? 'สลับเป็นโหมดออฟไลน์แล้วค่ะ! ข้อมูลทั้งหมดจะถูกบันทึกบนโทรศัพท์/เบราว์เซอร์เครื่องนี้อย่างปลอดภัย 100% โดยไม่ต้องพึ่งระบบเซิร์ฟเวอร์ค่ะ 🔒'
+        : 'สลับกลับมาใช้โหมดเซิร์ฟเวอร์ออนไลน์แล้วค่ะ!',
+      type: 'success'
+    });
+  };
+
   const handleSwitchAuthMode = (mode: 'email' | 'login' | 'register') => {
     setAuthMode(mode);
     setLoginUsername('');
@@ -619,6 +639,173 @@ export default function App() {
       setIsLoggingIn(false);
     }
   };
+
+  // Simple Unified Setup - Create New Space
+  const handleCreateSimpleSpace = async (yourName: string, partnerName: string, roomCode: string, anniversary: string) => {
+    setIsLoggingIn(true);
+    setAuthMessage(null);
+    try {
+      const cleanedYourName = yourName.trim();
+      const cleanedPartnerName = partnerName.trim() || 'คุณแฟน 🐰';
+      // Normalize room code to 4-digit LOVE-XXXX
+      let cleanedRoomCode = roomCode.trim().toUpperCase();
+      if (cleanedRoomCode.length === 4) {
+        cleanedRoomCode = 'LOVE-' + cleanedRoomCode;
+      } else if (!cleanedRoomCode) {
+        cleanedRoomCode = 'LOVE-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+      }
+
+      const userEmail = `${cleanedYourName.toLowerCase()}_${cleanedRoomCode.toLowerCase().replace('-', '')}@couple.app`;
+      const partnerEmail = `${cleanedPartnerName.toLowerCase()}_${cleanedRoomCode.toLowerCase().replace('-', '')}@couple.app`;
+
+      // 1. Authenticate / Login user
+      const loginRes = await appFetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: userEmail,
+          name: cleanedYourName,
+          picture: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'
+        })
+      });
+
+      if (!loginRes.ok) {
+        throw new Error('ไม่สามารถเข้าสู่ระบบเพื่อเริ่มสร้างห้องได้ค่ะ');
+      }
+
+      const loginData = await loginRes.json();
+      const loggedUser = loginData.user;
+
+      // 2. Create the couple space
+      const coupleRes = await appFetch('/api/couple/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: userEmail,
+          partnerEmail: partnerEmail
+        })
+      });
+
+      if (!coupleRes.ok) {
+        throw new Error('ไม่สามารถสร้างพื้นที่รักได้ในเซิร์ฟเวอร์');
+      }
+
+      const coupleData = await coupleRes.json();
+      const createdCouple = coupleData.couple;
+
+      // Update couple room code and nicknames
+      createdCouple.pairingCode = cleanedRoomCode;
+      createdCouple.relationshipInfo = {
+        anniversaryDate: anniversary || new Date().toISOString().split('T')[0],
+        userNickname: cleanedYourName,
+        partnerNickname: cleanedPartnerName,
+        loveMessage: 'อยู่รักและเป็นรอยยิ้มของกันและกันแบบนี้ไปทุกๆ วันเลยน้าาา 🥰',
+        userAvatar: '🐻',
+        partnerAvatar: '🐰'
+      };
+
+      // 3. Update the info
+      await appFetch(`/api/couple/update-info`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          coupleId: createdCouple.id,
+          info: createdCouple.relationshipInfo
+        })
+      });
+
+      // Update main state
+      const finalUser = { ...loggedUser, coupleId: createdCouple.id };
+      setCurrentUser(finalUser);
+      setCurrentCouple(createdCouple);
+      setRelationshipInfo(createdCouple.relationshipInfo);
+      localStorage.setItem('couple_user', JSON.stringify(finalUser));
+
+      // Fetch full details
+      fetchCoupleData(createdCouple.id);
+      triggerNotification('🏡 เริ่มต้นพื้นที่รักแสนอบอุ่นและห้องสองเราสำเร็จแล้วจ้า!', 'love');
+
+    } catch (err: any) {
+      console.error(err);
+      setAuthMessage({
+        text: `เกิดความล่าช้าในการส่งข้อมูลไปยังคลาวด์ แนะนำเปิดโหมดออฟไลน์เพื่อเข้าใช้งานได้ 100% เลยค่ะ!`,
+        type: 'error'
+      });
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  // Simple Unified Setup - Join Existing Space
+  const handleJoinSimpleSpace = async (yourName: string, roomCode: string) => {
+    setIsLoggingIn(true);
+    setAuthMessage(null);
+    try {
+      const cleanedYourName = yourName.trim();
+      let cleanedRoomCode = roomCode.trim().toUpperCase();
+      if (cleanedRoomCode.length === 4) {
+        cleanedRoomCode = 'LOVE-' + cleanedRoomCode;
+      }
+
+      const userEmail = `${cleanedYourName.toLowerCase()}_${cleanedRoomCode.toLowerCase().replace('-', '')}@couple.app`;
+
+      // 1. Login user
+      const loginRes = await appFetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: userEmail,
+          name: cleanedYourName,
+          picture: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'
+        })
+      });
+
+      if (!loginRes.ok) {
+        throw new Error('ไม่สามารถเข้าสู่ระบบได้ค่ะ');
+      }
+
+      const loginData = await loginRes.json();
+      const loggedUser = loginData.user;
+
+      // 2. Join couple space using pairing code
+      const joinRes = await appFetch('/api/couple/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: userEmail,
+          pairingCode: cleanedRoomCode
+        })
+      });
+
+      if (!joinRes.ok) {
+        const errData = await joinRes.json();
+        throw new Error(errData.error || 'รหัสห้องไม่ถูกต้อง กรุณาตรวจสอบรหัสห้องอีกครั้งนะคะ');
+      }
+
+      const joinData = await joinRes.json();
+      const joinedCouple = joinData.couple;
+
+      // Update state
+      const finalUser = { ...loggedUser, coupleId: joinedCouple.id };
+      setCurrentUser(finalUser);
+      setCurrentCouple(joinedCouple);
+      setRelationshipInfo(joinedCouple.relationshipInfo);
+      localStorage.setItem('couple_user', JSON.stringify(finalUser));
+
+      fetchCoupleData(joinedCouple.id);
+      triggerNotification('💑 เชื่อมต่อหัวใจสองเราสำเร็จ ยินดีต้อนรับเข้าสู่รังรักค่ะ!', 'love');
+
+    } catch (err: any) {
+      console.error(err);
+      setAuthMessage({
+        text: err.message || 'รหัสห้องไม่ถูกต้อง หรือระบบขัดข้องชั่วคราวค่ะ',
+        type: 'error'
+      });
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
   useEffect(() => {
     if (!currentUser || !currentUser.coupleId) return;
 
@@ -1066,7 +1253,7 @@ export default function App() {
   // Render Login state first if not authenticated
   if (!currentUser) {
     return (
-      <div className="min-h-screen bg-[#FFF9F5] text-[#5D4E4E] flex flex-col justify-between antialiased">
+      <div className="min-h-screen bg-[#FFF9F5] text-[#5D4E4E] flex flex-col justify-between antialiased font-sans">
         <div className="flex-1 flex items-center justify-center p-4">
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
@@ -1080,57 +1267,80 @@ export default function App() {
               <h1 className="font-extrabold text-2xl text-[#5D4E4E] tracking-tight">
                 Couple Memory Hub 💖
               </h1>
-              <p className="text-xs text-[#A89090] max-w-sm mx-auto leading-relaxed animate-pulse">
-                เซฟโซนแชร์บันทึก แชท และความทรงจำสองเรา 🧸 แนะนำแท็บ <strong className="text-[#FF8E8E]">"📧 ล็อกอินด่วน"</strong> เพื่อเข้าใช้งานผ่านอีเมลได้ทันที ง่ายและปลอดภัยที่สุดค่ะ!
+              <p className="text-xs text-[#A89090] max-w-sm mx-auto leading-relaxed">
+                พื้นที่ส่วนตัวสำหรับเก็บแชท บันทึก และความทรงจำสองเรา 🧸 ล็อกอินหรือสร้างห้องง่ายๆ ด้วยชื่อเล่นและรหัสห้องคู่รัก สะดวกและปลอดภัย 100% ค่ะ!
               </p>
             </div>
 
-            {/* Premium Tab Bar */}
-            <div className="grid grid-cols-3 p-1 bg-gray-100 rounded-2xl border border-[#F0E6DD]/60 gap-1">
+            {/* Offline vs Online Mode Quick Switch */}
+            <div className="p-4 bg-rose-50/70 border border-rose-100 rounded-2xl text-xs space-y-2.5 text-left">
+              <div className="flex items-center justify-between">
+                <span className="font-extrabold text-[#5D4E4E] flex items-center gap-1.5">
+                  📱 โหมดการทำงานระบบ:
+                </span>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                  isOfflineMode 
+                    ? 'bg-amber-100 text-amber-800 border border-amber-200' 
+                    : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                }`}>
+                  {isOfflineMode ? '🔒 ออฟไลน์ส่วนตัว 100%' : '☁️ ออนไลน์ซิงค์คลาวด์'}
+                </span>
+              </div>
+              <p className="text-[#A89090] text-[10.5px] leading-relaxed font-medium">
+                {isOfflineMode 
+                  ? 'เซฟข้อมูลในโทรศัพท์เครื่องนี้ ปลอดภัยและเสถียรที่สุด 100% ไม่ต้องเชื่อมต่อเครือข่ายเซิร์ฟเวอร์ หมดกังวลเรื่องเน็ตมือถือบล็อกค่ะ!' 
+                  : 'เชื่อมต่อและแชร์ข้อมูลเรียลไทม์ระหว่าง 2 เครื่อง ใช้รหัสห้องคู่รักเดียวกันเพื่อแชร์ความทรงจำร่วมกันได้เลยค่ะ'}
+              </p>
               <button
                 type="button"
-                onClick={() => handleSwitchAuthMode('email')}
-                className={`py-2 px-1 text-[10px] font-black rounded-xl transition-all cursor-pointer truncate text-center ${
-                  authMode === 'email'
-                    ? 'bg-white text-[#FF8E8E] shadow-xs'
-                    : 'text-[#A89090] hover:text-[#5D4E4E]'
-                }`}
+                onClick={() => handleToggleOfflineMode(!isOfflineMode)}
+                className="w-full py-2 bg-white hover:bg-rose-100/30 text-[#FF8E8E] border border-[#FF8E8E]/30 font-black rounded-xl text-xs transition-all cursor-pointer active:scale-95 shadow-2xs"
               >
-                📧 ล็อกอินด่วน
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSwitchAuthMode('login')}
-                className={`py-2 px-1 text-[10px] font-black rounded-xl transition-all cursor-pointer truncate text-center ${
-                  authMode === 'login'
-                    ? 'bg-white text-[#FF8E8E] shadow-xs'
-                    : 'text-[#A89090] hover:text-[#5D4E4E]'
-                }`}
-              >
-                🔑 ชื่อผู้ใช้เดิม
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSwitchAuthMode('register')}
-                className={`py-2 px-1 text-[10px] font-black rounded-xl transition-all cursor-pointer truncate text-center ${
-                  authMode === 'register'
-                    ? 'bg-white text-[#FF8E8E] shadow-xs'
-                    : 'text-[#A89090] hover:text-[#5D4E4E]'
-                }`}
-              >
-                📝 สมัครใหม่
+                🔄 สลับเป็น{isOfflineMode ? 'โหมดออนไลน์ซิงค์คลาวด์' : 'โหมดส่วนตัวออฟไลน์ 100%'}
               </button>
             </div>
 
-            {/* Notification Messages */}
+            {/* Main Tabs */}
+            <div className="grid grid-cols-2 p-1 bg-gray-100 rounded-2xl border border-gray-200 gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setSimpleMode('create');
+                  setAuthMessage(null);
+                }}
+                className={`py-2 px-1 text-xs font-black rounded-xl transition-all cursor-pointer text-center ${
+                  simpleMode === 'create'
+                    ? 'bg-white text-[#FF8E8E] shadow-xs'
+                    : 'text-[#A89090] hover:text-[#5D4E4E]'
+                }`}
+              >
+                🏡 สร้างห้องคู่รักใหม่
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSimpleMode('join');
+                  setAuthMessage(null);
+                }}
+                className={`py-2 px-1 text-xs font-black rounded-xl transition-all cursor-pointer text-center ${
+                  simpleMode === 'join'
+                    ? 'bg-white text-[#FF8E8E] shadow-xs'
+                    : 'text-[#A89090] hover:text-[#5D4E4E]'
+                }`}
+              >
+                🔗 เข้าร่วมห้องคู่รัก
+              </button>
+            </div>
+
+            {/* Notification Message */}
             {authMessage && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className={`p-3.5 rounded-xl border text-xs leading-relaxed flex items-start gap-2 ${
+                className={`p-3.5 rounded-2xl text-xs font-medium border text-left leading-relaxed flex items-start gap-2 ${
                   authMessage.type === 'success'
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                    : 'bg-rose-50 border-rose-200 text-rose-800'
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                    : 'bg-rose-50 text-rose-800 border-rose-200'
                 }`}
               >
                 <span className="text-base mt-0.5">
@@ -1140,176 +1350,137 @@ export default function App() {
               </motion.div>
             )}
 
-            {/* Anti-Autofill protection and forms */}
-            {authMode === 'email' ? (
-              <form
-                onSubmit={handleEmailLoginSubmit}
-                className="space-y-4 text-left bg-[#FFF9F5] p-5 sm:p-6 rounded-2xl border border-[#F0E6DD]"
-                autoComplete="off"
+            {/* Create Mode Form */}
+            {simpleMode === 'create' ? (
+              <form 
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!simpleYourName.trim()) {
+                    setAuthMessage({ text: 'กรุณากรอกชื่อเล่นของคุณด้วยนะคะ', type: 'error' });
+                    return;
+                  }
+                  handleCreateSimpleSpace(simpleYourName, simplePartnerName, simpleRoomCode, simpleAnniversary);
+                }}
+                className="space-y-4 text-left"
               >
-                <div className="flex items-center gap-2 mb-2 justify-center">
-                  <span className="w-6 h-6 bg-[#FFEFEF] rounded-full flex items-center justify-center text-xs text-[#FF8E8E]">📧</span>
-                  <p className="text-sm font-black text-[#5D4E4E] tracking-tight">เข้าใช้งานด่วนด้วยอีเมล</p>
-                </div>
-
-                <div className="space-y-3">
+                <div className="space-y-3.5">
                   <div>
-                    <label className="block text-[11px] font-bold text-[#A89090] uppercase mb-1">
-                      อีเมลของคุณ (Your Email): <span className="text-rose-400">*</span>
-                    </label>
-                    <input
-                      type="email"
-                      value={loginEmail}
-                      onChange={(e) => setLoginEmail(e.target.value)}
-                      placeholder="kunakorn.k66@gmail.com"
-                      className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] focus:ring-1 focus:ring-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E] font-medium placeholder:text-gray-300 shadow-2xs"
-                      required
-                    />
-                    <span className="block text-[10px] text-gray-400 mt-1.5 font-medium">
-                      * ระบบจะล็อกอินหรือสมัครสมาชิกให้ทันทีโดยไม่มีพาสเวิร์ด (ถ้าระบุอีเมลเดิม ข้อมูลเดิมทั้งหมดจะถูกดึงกลับมาครบถ้วนค่ะ)
-                    </span>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#A89090] uppercase mb-1">
-                      ชื่อเล่นของคุณ (Nickname - สำหรับสมาชิกใหม่):
+                    <label className="block text-[11px] font-black text-gray-500 mb-1">
+                      👤 ชื่อเล่นของคุณ: <span className="text-rose-400">*</span>
                     </label>
                     <input
                       type="text"
-                      value={loginName}
-                      onChange={(e) => setLoginName(e.target.value)}
-                      placeholder="กรอกชื่อเล่นของคุณ (พี่หมี)"
-                      className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] focus:ring-1 focus:ring-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E] font-medium placeholder:text-gray-300 shadow-2xs"
+                      value={simpleYourName}
+                      onChange={(e) => setSimpleYourName(e.target.value)}
+                      placeholder="กรอกชื่อเล่นของคุณ"
+                      className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] focus:ring-1 focus:ring-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E] font-bold"
+                      required
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-black text-gray-500 mb-1">
+                      💖 ชื่อเล่นแฟนคุณ (ระบุเพื่อแต่งหน้าหลัก):
+                    </label>
+                    <input
+                      type="text"
+                      value={simplePartnerName}
+                      onChange={(e) => setSimplePartnerName(e.target.value)}
+                      placeholder="กรอกชื่อเล่นของแฟน"
+                      className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] focus:ring-1 focus:ring-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E] font-bold"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-black text-gray-500 mb-1">
+                        🔑 ตั้งรหัสห้องคู่รัก 4 หลัก:
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={4}
+                        value={simpleRoomCode}
+                        onChange={(e) => setSimpleRoomCode(e.target.value.replace(/[^a-zA-Z0-9]/g, ''))}
+                        placeholder="1234"
+                        className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] focus:ring-1 focus:ring-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E] font-bold text-center uppercase"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-black text-gray-500 mb-1">
+                        📅 วันครบรอบของสองเรา:
+                      </label>
+                      <input
+                        type="date"
+                        value={simpleAnniversary}
+                        onChange={(e) => setSimpleAnniversary(e.target.value)}
+                        className="w-full text-xs p-2.5 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] focus:ring-1 focus:ring-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E] font-bold text-center"
+                      />
+                    </div>
                   </div>
                 </div>
 
                 <button
                   type="submit"
                   disabled={isLoggingIn}
-                  className="w-full py-3 mt-2 bg-[#FF8E8E] hover:bg-[#FF8E8E]/90 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-all active:scale-[0.98]"
+                  className="w-full py-3.5 bg-linear-to-r from-rose-400 to-pink-500 hover:from-rose-500 hover:to-pink-600 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all active:scale-[0.98]"
                 >
-                  {isLoggingIn ? 'กำลังดำเนินการ...' : 'เข้าสู่ระบบ / เริ่มต้นใช้งานด่วน 💖'}
-                </button>
-              </form>
-            ) : authMode === 'login' ? (
-              <form
-                onSubmit={handleUsernameLogin}
-                className="space-y-4 text-left bg-[#FFF9F5] p-5 sm:p-6 rounded-2xl border border-[#F0E6DD]"
-                autoComplete="off"
-              >
-                {/* Dummy structures to trap browser password managers and autofill */}
-                <input type="text" name="prevent_autofill_user" style={{ display: 'none' }} tabIndex={-1} />
-                <input type="password" name="prevent_autofill_pass" style={{ display: 'none' }} tabIndex={-1} />
-
-                <div className="flex items-center gap-2 mb-2 justify-center">
-                  <span className="w-6 h-6 bg-[#FFEFEF] rounded-full flex items-center justify-center text-xs text-[#FF8E8E]">👤</span>
-                  <p className="text-sm font-black text-[#5D4E4E] tracking-tight">ระบุข้อมูลผู้ใช้เพื่อเข้าระบบ</p>
-                </div>
-
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#A89090] uppercase mb-1">
-                      ชื่อผู้ใช้งาน (Username):
-                    </label>
-                    <input
-                      type="text"
-                      name="couple_username_login"
-                      value={loginUsername}
-                      onChange={(e) => setLoginUsername(e.target.value)}
-                      placeholder="กรอกชื่อผู้ใช้งานภาษาอังกฤษ ตัวเลข ขีดล่าง"
-                      className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] focus:ring-1 focus:ring-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E] font-medium placeholder:text-gray-300 shadow-2xs"
-                      autoComplete="off"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#A89090] uppercase mb-1">
-                      รหัสผ่าน (Password):
-                    </label>
-                    <input
-                      type="password"
-                      name="couple_password_login"
-                      value={loginPassword}
-                      onChange={(e) => setLoginPassword(e.target.value)}
-                      placeholder="กรอกรหัสผ่านของคุณ"
-                      className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] focus:ring-1 focus:ring-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E] font-medium placeholder:text-gray-300 shadow-2xs"
-                      autoComplete="off"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isLoggingIn}
-                  className="w-full py-3 mt-2 bg-[#FF8E8E] hover:bg-[#FF8E8E]/90 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-all active:scale-[0.98]"
-                >
-                  {isLoggingIn ? 'กำลังตรวจสอบสิทธิ์...' : 'เข้าสู่ระบบห้องของสองเรา 💖'}
+                  {isLoggingIn ? '💖 กำลังเตรียมห้องหัวใจ...' : 'สร้างห้องรักและเข้าใช้งานทันที ✨'}
                 </button>
               </form>
             ) : (
-              <form
-                onSubmit={handleUsernameRegister}
-                className="space-y-4 text-left bg-[#FFF9F5] p-5 sm:p-6 rounded-2xl border border-[#F0E6DD]"
-                autoComplete="off"
+              /* Join Mode Form */
+              <form 
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!simpleYourName.trim()) {
+                    setAuthMessage({ text: 'กรุณากรอกชื่อเล่นของคุณด้วยนะคะ', type: 'error' });
+                    return;
+                  }
+                  if (!simpleRoomCode.trim()) {
+                    setAuthMessage({ text: 'กรุณากรอกรหัสห้องของแฟนคุณด้วยนะคะ', type: 'error' });
+                    return;
+                  }
+                  handleJoinSimpleSpace(simpleYourName, simpleRoomCode);
+                }}
+                className="space-y-4 text-left"
               >
-                {/* Dummy structures to trap browser password managers and autofill */}
-                <input type="text" name="prevent_autofill_user_reg" style={{ display: 'none' }} tabIndex={-1} />
-                <input type="password" name="prevent_autofill_pass_reg" style={{ display: 'none' }} tabIndex={-1} />
-
-                <div className="flex items-center gap-2 mb-2 justify-center">
-                  <span className="w-6 h-6 bg-[#FFEFEF] rounded-full flex items-center justify-center text-xs text-[#FF8E8E]">📝</span>
-                  <p className="text-sm font-black text-[#5D4E4E] tracking-tight">กรอกข้อมูลเพื่อสมัครสมาชิกใหม่</p>
-                </div>
-
-                <div className="space-y-3">
+                <div className="space-y-3.5">
                   <div>
-                    <label className="block text-[11px] font-bold text-[#A89090] uppercase mb-1">
-                      ชื่อผู้ใช้งาน (Username): <span className="text-rose-400">*</span>
+                    <label className="block text-[11px] font-black text-gray-500 mb-1">
+                      👤 ชื่อเล่นของคุณ: <span className="text-rose-400">*</span>
                     </label>
                     <input
                       type="text"
-                      name="couple_username_signup"
-                      value={signUpUsername}
-                      onChange={(e) => setSignUpUsername(e.target.value)}
-                      placeholder="ภาษาอังกฤษ / ตัวเลข / ขีดล่างเท่านั้น"
-                      className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] focus:ring-1 focus:ring-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E] font-medium placeholder:text-gray-300 shadow-2xs"
-                      autoComplete="off"
+                      value={simpleYourName}
+                      onChange={(e) => setSimpleYourName(e.target.value)}
+                      placeholder="กรอกชื่อเล่นของคุณ"
+                      className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] focus:ring-1 focus:ring-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E] font-bold"
                       required
                     />
-                    <span className="block text-[10px] text-gray-400 mt-1 font-medium">
-                      * จัดเก็บในระบบในรูปแบบเสมือน: username@app.com
-                    </span>
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold text-[#A89090] uppercase mb-1">
-                      รหัสผ่าน (Password): <span className="text-rose-400">*</span>
+                    <label className="block text-[11px] font-black text-gray-500 mb-1">
+                      🔑 รหัสห้องของแฟน (4 หลัก หรือ LOVE-XXXX): <span className="text-rose-400">*</span>
                     </label>
                     <input
-                      type="password"
-                      name="couple_password_signup"
-                      value={signUpPassword}
-                      onChange={(e) => setSignUpPassword(e.target.value)}
-                      placeholder="รหัสผ่านอย่างน้อย 6 ตัวอักษร"
-                      className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] focus:ring-1 focus:ring-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E] font-medium placeholder:text-gray-300 shadow-2xs"
-                      autoComplete="new-password"
+                      type="text"
+                      maxLength={9}
+                      value={simpleRoomCode}
+                      onChange={(e) => setSimpleRoomCode(e.target.value.replace(/[^a-zA-Z0-9-]/g, ''))}
+                      placeholder="รหัสห้อง 4 หลัก หรือ LOVE-XXXX"
+                      className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] focus:ring-1 focus:ring-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E] font-bold text-center uppercase"
                       required
                     />
-                    <span className="block text-[10px] text-gray-400 mt-1 font-medium">
-                      * จัดเก็บอย่างปลอดภัยด้วยการเข้ารหัส SHA-256 ลงในคอลเลกชันผู้ใช้บน Firestore
-                    </span>
                   </div>
                 </div>
 
                 <button
                   type="submit"
                   disabled={isLoggingIn}
-                  className="w-full py-3 mt-2 bg-[#FF8E8E] hover:bg-[#FF8E8E]/90 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-all active:scale-[0.98]"
+                  className="w-full py-3.5 bg-linear-to-r from-rose-400 to-pink-500 hover:from-rose-500 hover:to-pink-600 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all active:scale-[0.98]"
                 >
-                  {isLoggingIn ? 'กำลังดำเนินการ...' : 'ลงทะเบียนผู้ใช้ใหม่ 🌿'}
+                  {isLoggingIn ? '💖 กำลังเชื่อมต่อห้องคู่รัก...' : 'เชื่อมเข้าร่วมห้องคู่รัก 💑'}
                 </button>
               </form>
             )}
@@ -1317,11 +1488,11 @@ export default function App() {
             <div className="relative flex items-center justify-center">
               <div className="absolute w-full border-t border-[#F0E6DD]"></div>
               <span className="relative bg-white px-3 text-[10px] font-bold text-[#A89090] uppercase tracking-widest">
-                หรือ เข้าใช้งานระบบสาธิตด่วน
+                หรือ ทดลองใช้งานด่วน
               </span>
             </div>
 
-            {/* Instant login fallback with no inputs */}
+            {/* Instant Demo Account login */}
             <div className="space-y-4">
               <button
                 type="button"
@@ -1360,9 +1531,9 @@ export default function App() {
                   }
                 }}
                 disabled={isLoggingIn}
-                className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-[#5D4E4E] border border-[#F0E6DD] font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-[0.98]"
+                className="w-full py-2.5 bg-gray-50 hover:bg-gray-100 text-[#5D4E4E] border border-[#F0E6DD] font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-[0.98]"
               >
-                เข้าใช้งานด้วยบัญชีเดโม่ (couple_demo) 🦊
+                เข้าชมตัวอย่างแอป (couple_demo) 🦊
               </button>
             </div>
           </motion.div>
@@ -1370,7 +1541,7 @@ export default function App() {
 
         {/* Cute Couple Footer */}
         <footer className="text-center text-[10px] text-gray-400 py-4 border-t border-[#F0E6DD]">
-          Couple Memory Hub • พัฒนาโดยคำนึงถึงความสุขและความปลอดภัยสูงสุด 🔒
+          Couple Memory Hub • พัฒนาด้วยคำนึงถึงความสุขและความปลอดภัยสูงสุด 🔒
         </footer>
       </div>
     );
@@ -1533,10 +1704,17 @@ export default function App() {
             <Sparkles className="w-4 h-4 text-[#FF8E8E] animate-spin" style={{ animationDuration: '4s' }} />
             <span>เชื่อมต่อสำเร็จ! คุณเข้าสู่ระบบในชื่อ: <strong>{activeUser === 'user' ? relationshipInfo.userNickname : relationshipInfo.partnerNickname}</strong></span>
           </p>
-          <div className="flex bg-white rounded-full p-1 border border-[#F0E6DD] shadow-2xs text-[10px] font-bold px-3 py-1 text-[#FF8E8E] items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-green-500 animate-ping"></span>
-            เชื่อมต่อแบบเรียลไทม์รักกันตลอดเวลา 💑
-          </div>
+          {isOfflineMode ? (
+            <div className="flex bg-amber-50 rounded-full p-1 border border-amber-300 shadow-2xs text-[10px] font-bold px-3 py-1 text-amber-800 items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+              🔒 โหมดออฟไลน์ส่วนตัว 100% (ปลอดภัย เก็บข้อมูลบนโทรศัพท์เครื่องนี้)
+            </div>
+          ) : (
+            <div className="flex bg-white rounded-full p-1 border border-[#F0E6DD] shadow-2xs text-[10px] font-bold px-3 py-1 text-[#FF8E8E] items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-green-500 animate-ping"></span>
+              เชื่อมต่อแบบเรียลไทม์รักกันตลอดเวลา 💑
+            </div>
+          )}
         </div>
 
         {/* Main Brand Title & Nav Menu */}
@@ -1547,10 +1725,14 @@ export default function App() {
             </span>
             <div>
               <h1 className="font-extrabold text-xl md:text-2xl text-[#5D4E4E] tracking-tight flex items-center gap-1">
-                Couple Memory Hub <span className="text-xs bg-[#FFEFEF] text-[#FF8E8E] font-black px-2 py-0.5 rounded-full border border-[#FF8E8E]/10">REALTIME</span>
+                Couple Memory Hub {isOfflineMode ? (
+                  <span className="text-[10px] bg-amber-100 text-amber-800 font-black px-2 py-0.5 rounded-full border border-amber-300">OFFLINE</span>
+                ) : (
+                  <span className="text-xs bg-[#FFEFEF] text-[#FF8E8E] font-black px-2 py-0.5 rounded-full border border-[#FF8E8E]/10">REALTIME</span>
+                )}
               </h1>
               <p className="text-[11px] text-[#A89090] font-medium">
-                บันทึกรักสองเรา • ปลอดภัย แบ๊ว คิขุ อบอุ่น แชทใช้งานได้จริงพร้อมซิงค์คลาวด์ 🔒
+                บันทึกรักสองเรา • ปลอดภัย แบ๊ว คิขุ อบอุ่น แชทใช้งานได้จริงและเซฟข้อมูลอย่างเป็นส่วนตัว 🔒
               </p>
             </div>
           </div>
