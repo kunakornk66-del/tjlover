@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { Shield, Cloud, Download, Upload, CheckCircle2, Lock, Key, RefreshCw, AlertTriangle, FileJson, LogOut, User, Link, Trash2, ShieldAlert, Copy, Bell, Palette } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Shield, Cloud, Download, Upload, CheckCircle2, Lock, Key, RefreshCw, AlertTriangle, FileJson, LogOut, User, Link, Trash2, ShieldAlert, Copy, Bell, Palette, Activity, Info, Server, Terminal, AlertCircle } from 'lucide-react';
 import { Memory, ChatMessage, CalendarEvent, MoodLog, RelationshipInfo, CurrentUser, Couple } from '../types';
 import { applyTheme } from '../theme';
+import { getDiagnosticLogs, subscribeToDiagnosticLogs, addDiagnosticLog, DiagnosticLog, getLocalOnlyMode } from '../api';
 
 interface SecuritySectionProps {
   memories: Memory[];
@@ -43,6 +44,50 @@ export default function SecuritySection({
   onRequestNotificationPermission = () => {},
 }: SecuritySectionProps) {
   const [passphrase, setPassphrase] = useState('LOVEMYPARTNER1314');
+  const [logs, setLogs] = useState<DiagnosticLog[]>(() => getDiagnosticLogs());
+  const [logFilter, setLogFilter] = useState<'all' | 'error' | 'request' | 'system'>('all');
+
+  useEffect(() => {
+    setLogs(getDiagnosticLogs());
+    const unsubscribe = subscribeToDiagnosticLogs(() => {
+      setLogs(getDiagnosticLogs());
+    });
+    return unsubscribe;
+  }, []);
+
+  const handleClearLogs = () => {
+    // Clear and add a cleared notice
+    addDiagnosticLog('system', 'ล้างประวัติการวิเคราะห์เรียบร้อยแล้วค่ะ');
+    setLogs(getDiagnosticLogs());
+  };
+
+  const handleCopyLogsText = () => {
+    const logsText = logs
+      .map(log => `[${log.timestamp}] [${log.type.toUpperCase()}] ${log.message} ${log.details ? JSON.stringify(log.details) : ''}`)
+      .join('\n');
+    navigator.clipboard.writeText(logsText);
+    onTriggerNotification('📋 คัดลอกประวัติการวิเคราะห์ (Diagnostic Logs) ไปยังคลิปบอร์ดแล้วค่ะ!');
+  };
+
+  const handleCopyCoupleId = () => {
+    const cid = currentUser?.coupleId || currentCouple?.id || '';
+    if (!cid) {
+      onTriggerNotification('⚠️ ยังไม่มี Couple ID ให้คัดลอกค่ะ');
+      return;
+    }
+    navigator.clipboard.writeText(cid);
+    onTriggerNotification('📋 คัดลอกรหัสคู่รัก (Couple ID) ไปยังคลิปบอร์ดสำเร็จแล้วค่ะ! 💕');
+  };
+
+  const handleCopySessionToken = () => {
+    if (!currentUser) {
+      onTriggerNotification('⚠️ ยังไม่มี Session Token ในขณะนี้ค่ะ');
+      return;
+    }
+    const token = btoa(JSON.stringify({ email: currentUser.email, cid: currentUser.coupleId || 'none' }));
+    navigator.clipboard.writeText(token);
+    onTriggerNotification('📋 คัดลอกกุญแจตรวจสอบสิทธิ์ (Session Token) เรียบร้อยแล้วค่ะ! 🔐');
+  };
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState('');
   const [syncProgress, setSyncProgress] = useState(0);
@@ -649,6 +694,212 @@ export default function SecuritySection({
           </div>
         </div>
 
+      </div>
+
+      {/* Real-time Diagnostic Log & Sync Troubleshooter Section */}
+      <div className="kawaii-card p-5 bg-white space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#F0E6DD] pb-4">
+          <div className="flex items-center gap-2.5">
+            <span className="p-2.5 bg-rose-50 rounded-full text-[#FF8E8E]">
+              <Terminal className="w-5 h-5 animate-pulse" />
+            </span>
+            <div>
+              <h3 className="font-extrabold text-[#5D4E4E] text-sm flex items-center gap-2">
+                🔍 ระบบวิเคราะห์สถานะและการซิงค์ข้อมูล (Couple Sync Diagnostics)
+                <span className="flex h-2 w-2 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+              </h3>
+              <p className="text-xs text-[#A89090]">
+                ตรวจสอบรหัสเชื่อมต่อ กุญแจยืนยันสิทธิ์ และประวัติการตอบกลับจากเซิร์ฟเวอร์แบบเรียลไทม์เพื่อซ่อมแซมแอปพลิเคชัน
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleCopyLogsText}
+              className="px-3 py-1.5 bg-[#FFF3F3] hover:bg-[#FFE6E6] text-[#FF8E8E] border border-[#FFD9D9] font-bold text-[11px] rounded-lg flex items-center gap-1 cursor-pointer transition-all active:scale-95"
+            >
+              <Copy className="w-3 h-3" />
+              <span>คัดลอกบันทึกทั้งหมด</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleClearLogs}
+              className="px-3 py-1.5 bg-gray-50 hover:bg-gray-100 text-[#5D4E4E] border border-gray-200 font-bold text-[11px] rounded-lg flex items-center gap-1 cursor-pointer transition-all active:scale-95"
+            >
+              <Trash2 className="w-3 h-3 text-gray-500" />
+              <span>ล้างบันทึก</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Sync Metadata Details Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* Couple ID Card */}
+          <div className="p-3 bg-[#FFF9F5]/80 border border-[#F0E6DD] rounded-xl flex flex-col justify-between gap-1.5 relative overflow-hidden">
+            <div className="flex justify-between items-center text-[10px] font-black text-gray-400">
+              <span className="flex items-center gap-1"><Info className="w-3 h-3 text-[#FF8E8E]" /> COUPLE ID</span>
+              <button 
+                onClick={handleCopyCoupleId}
+                className="p-1 bg-white hover:bg-[#FFEFEF] rounded-md border border-[#F0E6DD] cursor-pointer transition-colors"
+                title="คัดลอก Couple ID"
+              >
+                <Copy className="w-2.5 h-2.5 text-[#FF8E8E]" />
+              </button>
+            </div>
+            <p className="text-xs font-black font-mono text-[#5D4E4E] truncate" title={currentUser?.coupleId || currentCouple?.id || 'unlinked'}>
+              {currentUser?.coupleId || currentCouple?.id || 'ยังไม่เชื่อมต่อคู่รัก'}
+            </p>
+            <p className="text-[9px] text-gray-400">ระบุพิกัดห้องความทรงจำเพื่อแชร์ระหว่าง 2 เบราว์เซอร์</p>
+          </div>
+
+          {/* Session Token Card */}
+          <div className="p-3 bg-[#FFF9F5]/80 border border-[#F0E6DD] rounded-xl flex flex-col justify-between gap-1.5 relative overflow-hidden">
+            <div className="flex justify-between items-center text-[10px] font-black text-gray-400">
+              <span className="flex items-center gap-1"><Key className="w-3 h-3 text-[#FF8E8E]" /> SESSION TOKEN</span>
+              <button 
+                onClick={handleCopySessionToken}
+                className="p-1 bg-white hover:bg-[#FFEFEF] rounded-md border border-[#F0E6DD] cursor-pointer transition-colors"
+                title="คัดลอก Session Token"
+              >
+                <Copy className="w-2.5 h-2.5 text-[#FF8E8E]" />
+              </button>
+            </div>
+            <p className="text-xs font-black font-mono text-[#5D4E4E] truncate select-all">
+              {currentUser ? btoa(JSON.stringify({ email: currentUser.email, cid: currentUser.coupleId || 'none' })).substring(0, 32) + '...' : 'ไม่มีเซสชันที่เริ่มทำงาน'}
+            </p>
+            <p className="text-[9px] text-gray-400">กุญแจตรวจสอบสิทธิ์ล็อกอินส่งร่วมกับ API</p>
+          </div>
+
+          {/* Auth Scope */}
+          <div className="p-3 bg-[#FFF9F5]/80 border border-[#F0E6DD] rounded-xl flex flex-col justify-between gap-1.5">
+            <p className="text-[10px] font-black text-gray-400 flex items-center gap-1">
+              <User className="w-3 h-3 text-sky-400" /> AUTHENTICATED SCOPE
+            </p>
+            <p className="text-xs font-extrabold text-[#5D4E4E]">
+              {currentUser && currentCouple && currentUser.email.toLowerCase().trim() === (currentCouple.ownerEmail || '').toLowerCase().trim() ? "👑 เจ้าของพื้นที่รัก (Owner)" : "💖 สมาชิกแฟนรัก (Partner)"}
+            </p>
+            <p className="text-[9px] text-gray-400">ระบุสิทธิ์บทบาทและตัวตนของคุณในคู่รักนี้</p>
+          </div>
+
+          {/* Sync Connection Mode */}
+          <div className="p-3 bg-[#FFF9F5]/80 border border-[#F0E6DD] rounded-xl flex flex-col justify-between gap-1.5">
+            <p className="text-[10px] font-black text-gray-400 flex items-center gap-1">
+              <Cloud className="w-3 h-3 text-emerald-400" /> SYNC MODE
+            </p>
+            <div className="flex items-center gap-1.5">
+              <span className={`w-2.5 h-2.5 rounded-full ${getLocalOnlyMode() ? 'bg-amber-400' : 'bg-green-500 animate-pulse'}`} />
+              <p className="text-xs font-extrabold text-[#5D4E4E]">
+                {getLocalOnlyMode() ? "🔒 ออฟไลน์ในเครื่อง 100%" : "☁️ คลาวด์เรียบประสานเรียลไทม์"}
+              </p>
+            </div>
+            <p className="text-[9px] text-gray-400">
+              {getLocalOnlyMode() ? "ข้อมูลถูกล็อคเก็บไว้ภายในเครื่องนี้เพื่อความเสถียร" : "ซิงค์ข้อความความทรงจำและอุณหภูมิใจข้ามเครื่อง"}
+            </p>
+          </div>
+        </div>
+
+        {/* Real-time Logs List & Terminal Shell */}
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 bg-gray-50 p-2 rounded-xl border border-gray-100">
+            <div className="flex gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setLogFilter('all')}
+                className={`px-3 py-1 text-[10px] font-black rounded-lg cursor-pointer transition-colors ${
+                  logFilter === 'all' ? 'bg-[#FF8E8E] text-white' : 'text-gray-500 hover:text-gray-700 bg-white border border-gray-200'
+                }`}
+              >
+                ทั้งหมด ({logs.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setLogFilter('error')}
+                className={`px-3 py-1 text-[10px] font-black rounded-lg cursor-pointer transition-colors ${
+                  logFilter === 'error' ? 'bg-rose-500 text-white' : 'text-rose-500 hover:bg-rose-50 bg-white border border-rose-200'
+                }`}
+              >
+                ⚠️ ข้อผิดพลาด ({logs.filter(l => l.type === 'error').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setLogFilter('request')}
+                className={`px-3 py-1 text-[10px] font-black rounded-lg cursor-pointer transition-colors ${
+                  logFilter === 'request' ? 'bg-sky-500 text-white' : 'text-sky-500 hover:bg-sky-50 bg-white border border-sky-200'
+                }`}
+              >
+                🌐 คำขอส่งข้อมูล ({logs.filter(l => l.type === 'request').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setLogFilter('system')}
+                className={`px-3 py-1 text-[10px] font-black rounded-lg cursor-pointer transition-colors ${
+                  logFilter === 'system' ? 'bg-amber-500 text-white' : 'text-amber-500 hover:bg-amber-50 bg-white border border-amber-200'
+                }`}
+              >
+                ⚙️ ระบบ ({logs.filter(l => l.type === 'system').length})
+              </button>
+            </div>
+            <span className="text-[10px] text-gray-400 font-mono font-bold">
+              เครื่องมือจำลองเซิร์ฟเวอร์ Express / Node.js
+            </span>
+          </div>
+
+          {/* Terminal Console */}
+          <div className="bg-gray-950 rounded-2xl p-4 font-mono text-[10.5px] text-gray-300 border border-gray-800 space-y-2 max-h-[220px] overflow-y-auto shadow-inner leading-relaxed">
+            {logs.filter(log => logFilter === 'all' ? true : log.type === logFilter).length === 0 ? (
+              <p className="text-gray-500 italic text-center py-4">ไม่มีประวัติกิจกรรมเข้าเกณฑ์คัดกรองในขณะนี้ค่ะ 🧸</p>
+            ) : (
+              logs.filter(log => logFilter === 'all' ? true : log.type === logFilter).map((log, idx) => {
+                let badgeColor = 'text-gray-500';
+                let textColor = 'text-gray-300';
+                if (log.type === 'error') {
+                  badgeColor = 'text-rose-400 font-bold';
+                  textColor = 'text-rose-200 bg-rose-950/30 p-1.5 rounded border border-rose-900/30 block';
+                } else if (log.type === 'request') {
+                  badgeColor = 'text-sky-400';
+                  textColor = 'text-sky-100';
+                } else if (log.type === 'response') {
+                  badgeColor = 'text-emerald-400';
+                  textColor = 'text-emerald-100';
+                } else if (log.type === 'system') {
+                  badgeColor = 'text-amber-400 font-semibold';
+                  textColor = 'text-amber-100';
+                }
+
+                return (
+                  <div key={idx} className={`space-y-1 ${textColor}`}>
+                    <div className="flex items-start gap-1.5">
+                      <span className="text-gray-600 shrink-0 select-none">[{log.timestamp.substring(11, 19)}]</span>
+                      <span className={`${badgeColor} shrink-0 uppercase select-none`}>[{log.type}]</span>
+                      <p className="flex-1 break-all font-semibold">{log.message}</p>
+                    </div>
+                    {log.details && (
+                      <pre className="pl-6 text-[9.5px] text-gray-500 bg-gray-900/40 p-1.5 rounded-lg overflow-x-auto whitespace-pre-wrap break-all max-w-full">
+                        {JSON.stringify(log.details, null, 2)}
+                      </pre>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+          
+          <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-xl flex items-start gap-2.5">
+            <AlertCircle className="w-4.5 h-4.5 text-emerald-600 shrink-0 mt-0.5" />
+            <div className="text-xs text-emerald-800 space-y-1 font-semibold leading-relaxed">
+              <p>💡 <strong>เคล็ดลับวิธีแก้ปัญหาแชท / ข้อมูลคู่รักไม่ซิงค์ข้ามเครื่อง:</strong></p>
+              <ul className="list-disc pl-4.5 space-y-1.5 mt-1 text-emerald-900/80">
+                <li>โปรดตรวจสอบว่าทั้ง 2 เครื่องไม่ได้เปิดใช้งาน <strong>"โหมดออฟไลน์ส่วนตัว 100%"</strong> เพราะในโหมดดังกล่าวจะไม่มีการส่งข้อมูลไปยังคลาวด์เด็ดขาดค่ะ</li>
+                <li>ตรวจสอบให้มั่นใจว่ารหัสคู่รัก (Pairing Code) ของทั้ง 2 เครื่องระบุรหัสเดียวกัน (เช่น LOVE-XXXX)</li>
+                <li>ดูค่า <strong>COUPLE ID</strong> ด้านบนของทั้งสองเครื่อง: จะต้องเป็นชุด ID เดียวกันพอดี หากไม่เหมือนกัน ให้ทำการ รีเซ็ตคืนค่าโรงงาน (Reset Factory) เครื่องนึง แล้วกดปุ่มเชื่อมต่อด้วยรหัสห้องเดิม เพื่อประสานห้องเข้าหากันใหม่ค่ะ</li>
+              </ul>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Factory Reset Section */}

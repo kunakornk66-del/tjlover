@@ -3,6 +3,50 @@
 
 import { CurrentUser, Couple, Memory, ChatMessage, CalendarEvent, MoodLog } from './types';
 
+export interface DiagnosticLog {
+  timestamp: string;
+  type: 'request' | 'response' | 'error' | 'system';
+  message: string;
+  details?: any;
+}
+
+const diagnosticLogs: DiagnosticLog[] = [];
+let logListeners: (() => void)[] = [];
+
+export function addDiagnosticLog(type: 'request' | 'response' | 'error' | 'system', message: string, details?: any) {
+  const newLog: DiagnosticLog = {
+    timestamp: new Date().toISOString(),
+    type,
+    message,
+    details: details ? JSON.parse(JSON.stringify(details)) : undefined
+  };
+  diagnosticLogs.unshift(newLog);
+  if (diagnosticLogs.length > 50) {
+    diagnosticLogs.pop();
+  }
+  logListeners.forEach(listener => {
+    try {
+      listener();
+    } catch (e) {
+      console.error(e);
+    }
+  });
+}
+
+export function getDiagnosticLogs(): DiagnosticLog[] {
+  return [...diagnosticLogs];
+}
+
+export function subscribeToDiagnosticLogs(listener: () => void) {
+  logListeners.push(listener);
+  return () => {
+    logListeners = logListeners.filter(l => l !== listener);
+  };
+}
+
+// Seed initial log
+addDiagnosticLog('system', 'ระบบการตรวจสอบและวิเคราะห์การซิงค์ข้อมูล (Diagnostics) เริ่มต้นทำงานสำเร็จ');
+
 interface DB {
   users: Record<string, CurrentUser>;
   couples: Record<string, Couple>;
@@ -214,6 +258,162 @@ async function handleLocalFallback(url: string, options?: RequestInit): Promise<
           saveLocalDB(db);
         }
       }
+      return new MockResponse(200, { user, couple }) as any;
+    }
+
+    // 2.5 POST /api/simple/create (Local Fallback)
+    if (method === 'POST' && url.startsWith('/api/simple/create')) {
+      const { yourName, partnerName, roomCode, anniversaryDate } = JSON.parse(options?.body as string || '{}');
+      if (!yourName || !roomCode) {
+        return new MockResponse(400, { error: 'กรุณาระบุชื่อเล่นของคุณและรหัสห้องคู่รักด้วยค่ะ' }) as any;
+      }
+
+      const cleanedYourName = yourName.trim();
+      const cleanedPartnerName = partnerName ? partnerName.trim() : "";
+      
+      let cleanedCode = roomCode.toUpperCase().replace(/\s+/g, "").trim();
+      if (cleanedCode.length === 4) {
+        cleanedCode = "LOVE-" + cleanedCode;
+      } else if (cleanedCode.length === 8 && cleanedCode.startsWith("LOVE")) {
+        cleanedCode = "LOVE-" + cleanedCode.substring(4);
+      }
+
+      const existingCouple = Object.values(db.couples).find(
+        (c) => c.pairingCode.toUpperCase().trim() === cleanedCode
+      );
+
+      if (existingCouple) {
+        return new MockResponse(400, { 
+          error: `รหัสห้องคู่รัก "${cleanedCode}" นี้ถูกสร้างขึ้นแล้วค่ะ! หากนี่คือห้องของคุณ กรุณากดแถบ "เข้าร่วมห้องคู่รัก" แล้วป้อนชื่อเล่นกับรหัสห้องเพื่อเข้าสู่ระบบเชื่อมต่อได้ทันทีค่ะ` 
+        }) as any;
+      }
+
+      const ownerEmail = `${cleanedYourName.toLowerCase()}_${cleanedCode.toLowerCase().replace('-', '')}@couple.app`;
+      let ownerUser = db.users[ownerEmail];
+      if (!ownerUser) {
+        ownerUser = {
+          email: ownerEmail,
+          name: cleanedYourName,
+          picture: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150"
+        };
+        db.users[ownerEmail] = ownerUser;
+      }
+
+      let partnerEmail = undefined;
+      if (cleanedPartnerName) {
+        partnerEmail = `${cleanedPartnerName.toLowerCase()}_${cleanedCode.toLowerCase().replace('-', '')}@couple.app`;
+      }
+
+      const coupleId = `couple-${Date.now()}`;
+      const couple: Couple = {
+        id: coupleId,
+        ownerEmail: ownerEmail,
+        partnerEmail: partnerEmail,
+        pairingCode: cleanedCode,
+        relationshipInfo: {
+          anniversaryDate: anniversaryDate || new Date().toISOString().split("T")[0],
+          userNickname: cleanedYourName,
+          partnerNickname: cleanedPartnerName || "คุณแฟน 🐰",
+          loveMessage: "อยู่รักและเป็นรอยยิ้มของกันและกันแบบนี้ไปทุกๆ วันเลยน้าาา 🥰",
+          userAvatar: "🐻",
+          partnerAvatar: "🐰"
+        },
+        memories: [],
+        messages: [],
+        events: [],
+        moodLogs: [],
+      };
+
+      db.couples[coupleId] = couple;
+      ownerUser.coupleId = coupleId;
+      db.users[ownerEmail] = ownerUser;
+
+      saveLocalDB(db);
+      return new MockResponse(200, { user: ownerUser, couple }) as any;
+    }
+
+    // 2.6 POST /api/simple/auth (Local Fallback)
+    if (method === 'POST' && url.startsWith('/api/simple/auth')) {
+      const { yourName, roomCode } = JSON.parse(options?.body as string || '{}');
+      if (!yourName || !roomCode) {
+        return new MockResponse(400, { error: 'กรุณาระบุชื่อเล่นและรหัสห้องคู่รักด้วยค่ะ' }) as any;
+      }
+
+      const cleanedYourName = yourName.trim();
+      let cleanedCode = roomCode.toUpperCase().replace(/\s+/g, "").trim();
+      if (cleanedCode.length === 4) {
+        cleanedCode = "LOVE-" + cleanedCode;
+      } else if (cleanedCode.length === 8 && cleanedCode.startsWith("LOVE")) {
+        cleanedCode = "LOVE-" + cleanedCode.substring(4);
+      }
+
+      const couple = Object.values(db.couples).find(
+        (c) => c.pairingCode.toUpperCase().trim() === cleanedCode
+      );
+
+      if (!couple) {
+        return new MockResponse(404, { 
+          error: `ไม่พบห้องคู่รักรหัส "${cleanedCode}" ในระบบค่ะ กรุณาตรวจสอบรหัสห้อง หรือกดแถบ "สร้างห้องคู่รักใหม่" หากต้องการสร้างห้องใหม่ร่วมกันนะคะ` 
+        }) as any;
+      }
+
+      const standardEmail = `${cleanedYourName.toLowerCase()}_${cleanedCode.toLowerCase().replace('-', '')}@couple.app`;
+
+      const getSimplifiedLocal = (name: string) => {
+        if (!name) return "";
+        return name
+          .toLowerCase()
+          .replace(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDC00-\uDFFF]/g, '')
+          .replace(/\s+/g, '')
+          .trim();
+      };
+
+      let matchedUserEmail = standardEmail;
+      let isOwner = false;
+      let isPartner = false;
+
+      const simplifiedInput = getSimplifiedLocal(cleanedYourName);
+      const simplifiedOwnerNick = getSimplifiedLocal(couple.relationshipInfo.userNickname);
+      const simplifiedPartnerNick = getSimplifiedLocal(couple.relationshipInfo.partnerNickname);
+
+      if (couple.ownerEmail.toLowerCase().trim() === standardEmail.toLowerCase().trim() || simplifiedInput === simplifiedOwnerNick) {
+        isOwner = true;
+        matchedUserEmail = couple.ownerEmail;
+      } else if ((couple.partnerEmail && couple.partnerEmail.toLowerCase().trim() === standardEmail.toLowerCase().trim()) || simplifiedInput === simplifiedPartnerNick) {
+        isPartner = true;
+        matchedUserEmail = couple.partnerEmail || standardEmail;
+      } else {
+        if (!couple.partnerEmail) {
+          isPartner = true;
+          matchedUserEmail = standardEmail;
+          couple.partnerEmail = standardEmail;
+          couple.relationshipInfo.partnerNickname = cleanedYourName;
+        } else {
+          return new MockResponse(400, {
+            error: `ขออภัยค่ะ ห้องรักรหัสนี้เชื่อมต่อคู่รักเต็มแล้วค่ะ (เจ้าของห้อง: ${couple.relationshipInfo.userNickname} และ แฟน: ${couple.relationshipInfo.partnerNickname}) หากคุณป้อนข้อมูลถูกต้อง กรุณาป้อนชื่อเล่นของคุณให้ตรงกับชื่อเล่นที่ลงทะเบียนไว้นะคะ`
+          }) as any;
+        }
+      }
+
+      let user = db.users[matchedUserEmail.toLowerCase().trim()];
+      if (!user) {
+        user = {
+          email: matchedUserEmail,
+          name: cleanedYourName,
+          picture: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150",
+          coupleId: couple.id
+        };
+        db.users[matchedUserEmail.toLowerCase().trim()] = user;
+      } else {
+        user.coupleId = couple.id;
+        db.users[matchedUserEmail.toLowerCase().trim()] = user;
+      }
+
+      if (isPartner && !couple.relationshipInfo.partnerNickname) {
+        couple.relationshipInfo.partnerNickname = cleanedYourName;
+      }
+
+      saveLocalDB(db);
       return new MockResponse(200, { user, couple }) as any;
     }
 
@@ -564,13 +764,34 @@ async function handleLocalFallback(url: string, options?: RequestInit): Promise<
 
 // Global fetch substitute
 export async function appFetch(url: string, options?: RequestInit): Promise<Response> {
+  const method = (options?.method || 'GET').toUpperCase();
+  addDiagnosticLog('request', `เรียกข้อมูล: [${method}] ${url}`);
+
   // If Local-Only Mode is active, immediately route all API requests to the local database emulator
   if (getLocalOnlyMode()) {
-    console.info(`[Offline Mode] Intercepting fetch for ${url} to local emulator`);
-    return await handleLocalFallback(url, options);
+    addDiagnosticLog('system', `[โหมดออฟไลน์] จำลองข้อมูลในเครื่องสำหรับ ${url}`);
+    const localRes = await handleLocalFallback(url, options);
+    
+    // Log response
+    try {
+      const cloned = localRes.clone();
+      const text = await cloned.text();
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed.error || parsed.err) {
+          addDiagnosticLog('error', `พบข้อผิดพลาดจำลอง: ${parsed.error || parsed.err}`, parsed);
+        } else {
+          addDiagnosticLog('response', `จำลองสำเร็จ (HTTP ${localRes.status}): ${url}`);
+        }
+      } catch {
+        addDiagnosticLog('response', `จำลองสำเร็จ (HTTP ${localRes.status}): ${url}`);
+      }
+    } catch {}
+    
+    return localRes;
   }
 
-  const isAuthRoute = url.includes('/api/auth/');
+  const isAuthRoute = url.includes('/api/auth/') || url.includes('/api/simple/');
 
   try {
     const res = await window.fetch(url, options);
@@ -579,19 +800,39 @@ export async function appFetch(url: string, options?: RequestInit): Promise<Resp
     // Auth routes fallback to local emulator if the server is offline or fails
     if (isAuthRoute) {
       if (isHtmlResponse || res.status === 404 || res.status >= 500) {
-        console.warn(`Server returned HTML response or error for auth route ${url}, falling back to local emulator.`);
+        addDiagnosticLog('system', `เซิร์ฟเวอร์ตอบกลับไม่สมบูรณ์สำหรับเส้นทางสิทธิ์ (${url}) สลับเข้าโหมดจำลองในเครื่อง`);
         return await handleLocalFallback(url, options);
       }
-      return res;
-    }
-
-    if (res.status === 404 || isHtmlResponse) {
-      console.warn(`Server endpoint for ${url} is not available (HTML/404 received), returning local fallback.`);
+    } else if (res.status === 404 || isHtmlResponse) {
+      addDiagnosticLog('system', `ไม่พบจุดเชื่อมต่อเซิร์ฟเวอร์สำหรับ ${url} สลับเข้าโหมดจำลองในเครื่อง`);
       return await handleLocalFallback(url, options);
     }
+
+    // Log live response
+    try {
+      const cloned = res.clone();
+      const text = await cloned.text();
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed.error || parsed.err) {
+          addDiagnosticLog('error', `ข้อผิดพลาดจากเซิร์ฟเวอร์สำหรับ ${url}: ${parsed.error || parsed.err}`, parsed);
+        } else if (!res.ok) {
+          addDiagnosticLog('error', `เซิร์ฟเวอร์ตอบกลับรหัสข้อผิดพลาด HTTP ${res.status} สำหรับ ${url}`, parsed);
+        } else {
+          addDiagnosticLog('response', `เซิร์ฟเวอร์ตอบกลับสำเร็จ (HTTP ${res.status}): ${url}`);
+        }
+      } catch {
+        if (!res.ok) {
+          addDiagnosticLog('error', `เซิร์ฟเวอร์ตอบกลับรหัสข้อผิดพลาด HTTP ${res.status} สำหรับ ${url}`);
+        } else {
+          addDiagnosticLog('response', `เซิร์ฟเวอร์ตอบกลับสำเร็จ (HTTP ${res.status}): ${url}`);
+        }
+      }
+    } catch {}
+
     return res;
-  } catch (err) {
-    console.warn(`Express backend offline for ${url}, returning local fallback.`, err);
+  } catch (err: any) {
+    addDiagnosticLog('system', `เซิร์ฟเวอร์ออฟไลน์/เชื่อมต่อไม่ได้สำหรับ ${url} ทำการจำลองในเครื่องแทนค่ะ`, { error: err?.message || err });
     return await handleLocalFallback(url, options);
   }
 }

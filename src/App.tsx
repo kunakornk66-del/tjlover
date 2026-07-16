@@ -645,81 +645,31 @@ export default function App() {
     setIsLoggingIn(true);
     setAuthMessage(null);
     try {
-      const cleanedYourName = yourName.trim();
-      const cleanedPartnerName = partnerName.trim() || 'คุณแฟน 🐰';
-      // Normalize room code to 4-digit LOVE-XXXX
-      let cleanedRoomCode = roomCode.trim().toUpperCase();
-      if (cleanedRoomCode.length === 4) {
-        cleanedRoomCode = 'LOVE-' + cleanedRoomCode;
-      } else if (!cleanedRoomCode) {
-        cleanedRoomCode = 'LOVE-' + Math.random().toString(36).substring(2, 6).toUpperCase();
-      }
-
-      const userEmail = `${cleanedYourName.toLowerCase()}_${cleanedRoomCode.toLowerCase().replace('-', '')}@couple.app`;
-      const partnerEmail = `${cleanedPartnerName.toLowerCase()}_${cleanedRoomCode.toLowerCase().replace('-', '')}@couple.app`;
-
-      // 1. Authenticate / Login user
-      const loginRes = await appFetch('/api/auth/login', {
+      const response = await appFetch('/api/simple/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: userEmail,
-          name: cleanedYourName,
-          picture: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'
+          yourName,
+          partnerName,
+          roomCode,
+          anniversaryDate: anniversary
         })
       });
 
-      if (!loginRes.ok) {
-        throw new Error('ไม่สามารถเข้าสู่ระบบเพื่อเริ่มสร้างห้องได้ค่ะ');
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'ไม่สามารถสร้างห้องได้ กรุณาลองใหม่อีกครั้งค่ะ');
       }
 
-      const loginData = await loginRes.json();
-      const loggedUser = loginData.user;
-
-      // 2. Create the couple space
-      const coupleRes = await appFetch('/api/couple/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: userEmail,
-          partnerEmail: partnerEmail
-        })
-      });
-
-      if (!coupleRes.ok) {
-        throw new Error('ไม่สามารถสร้างพื้นที่รักได้ในเซิร์ฟเวอร์');
-      }
-
-      const coupleData = await coupleRes.json();
-      const createdCouple = coupleData.couple;
-
-      // Update couple room code and nicknames
-      createdCouple.pairingCode = cleanedRoomCode;
-      createdCouple.relationshipInfo = {
-        anniversaryDate: anniversary || new Date().toISOString().split('T')[0],
-        userNickname: cleanedYourName,
-        partnerNickname: cleanedPartnerName,
-        loveMessage: 'อยู่รักและเป็นรอยยิ้มของกันและกันแบบนี้ไปทุกๆ วันเลยน้าาา 🥰',
-        userAvatar: '🐻',
-        partnerAvatar: '🐰'
-      };
-
-      // 3. Update the info
-      await appFetch(`/api/couple/update-info`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          coupleId: createdCouple.id,
-          info: createdCouple.relationshipInfo
-        })
-      });
+      const data = await response.json();
+      const loggedUser = data.user;
+      const createdCouple = data.couple;
 
       // Update main state
-      const finalUser = { ...loggedUser, coupleId: createdCouple.id };
-      setCurrentUser(finalUser);
+      setCurrentUser(loggedUser);
       setCurrentCouple(createdCouple);
       setRelationshipInfo(createdCouple.relationshipInfo);
-      localStorage.setItem('couple_user', JSON.stringify(finalUser));
+      localStorage.setItem('couple_user', JSON.stringify(loggedUser));
 
       // Fetch full details
       fetchCoupleData(createdCouple.id);
@@ -728,7 +678,7 @@ export default function App() {
     } catch (err: any) {
       console.error(err);
       setAuthMessage({
-        text: `เกิดความล่าช้าในการส่งข้อมูลไปยังคลาวด์ แนะนำเปิดโหมดออฟไลน์เพื่อเข้าใช้งานได้ 100% เลยค่ะ!`,
+        text: err.message || `เกิดข้อผิดพลาดในการสร้างห้องคู่รักค่ะ`,
         type: 'error'
       });
     } finally {
@@ -736,64 +686,37 @@ export default function App() {
     }
   };
 
-  // Simple Unified Setup - Join Existing Space
+  // Simple Unified Setup - Join / Login to Existing Space (Bulletproof)
   const handleJoinSimpleSpace = async (yourName: string, roomCode: string) => {
     setIsLoggingIn(true);
     setAuthMessage(null);
     try {
-      const cleanedYourName = yourName.trim();
-      let cleanedRoomCode = roomCode.trim().toUpperCase();
-      if (cleanedRoomCode.length === 4) {
-        cleanedRoomCode = 'LOVE-' + cleanedRoomCode;
-      }
-
-      const userEmail = `${cleanedYourName.toLowerCase()}_${cleanedRoomCode.toLowerCase().replace('-', '')}@couple.app`;
-
-      // 1. Login user
-      const loginRes = await appFetch('/api/auth/login', {
+      const response = await appFetch('/api/simple/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: userEmail,
-          name: cleanedYourName,
-          picture: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'
+          yourName,
+          roomCode
         })
       });
 
-      if (!loginRes.ok) {
-        throw new Error('ไม่สามารถเข้าสู่ระบบได้ค่ะ');
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'รหัสห้องไม่ถูกต้อง กรุณาตรวจสอบอีกครั้งนะคะ');
       }
 
-      const loginData = await loginRes.json();
-      const loggedUser = loginData.user;
-
-      // 2. Join couple space using pairing code
-      const joinRes = await appFetch('/api/couple/join', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: userEmail,
-          pairingCode: cleanedRoomCode
-        })
-      });
-
-      if (!joinRes.ok) {
-        const errData = await joinRes.json();
-        throw new Error(errData.error || 'รหัสห้องไม่ถูกต้อง กรุณาตรวจสอบรหัสห้องอีกครั้งนะคะ');
-      }
-
-      const joinData = await joinRes.json();
-      const joinedCouple = joinData.couple;
+      const data = await response.json();
+      const loggedUser = data.user;
+      const joinedCouple = data.couple;
 
       // Update state
-      const finalUser = { ...loggedUser, coupleId: joinedCouple.id };
-      setCurrentUser(finalUser);
+      setCurrentUser(loggedUser);
       setCurrentCouple(joinedCouple);
       setRelationshipInfo(joinedCouple.relationshipInfo);
-      localStorage.setItem('couple_user', JSON.stringify(finalUser));
+      localStorage.setItem('couple_user', JSON.stringify(loggedUser));
 
       fetchCoupleData(joinedCouple.id);
-      triggerNotification('💑 เชื่อมต่อหัวใจสองเราสำเร็จ ยินดีต้อนรับเข้าสู่รังรักค่ะ!', 'love');
+      triggerNotification('💑 เชื่อมต่อระบบห้องคู่รักสองเราสำเร็จแล้ว ยินดีต้อนรับกลับรังรักค่ะ!', 'love');
 
     } catch (err: any) {
       console.error(err);
@@ -1461,7 +1384,7 @@ export default function App() {
 
                   <div>
                     <label className="block text-[11px] font-black text-gray-500 mb-1">
-                      🔑 รหัสห้องของแฟน (4 หลัก หรือ LOVE-XXXX): <span className="text-rose-400">*</span>
+                      🔑 รหัสห้องคู่รัก (4 หลัก หรือ LOVE-XXXX): <span className="text-rose-400">*</span>
                     </label>
                     <input
                       type="text"
@@ -1480,7 +1403,7 @@ export default function App() {
                   disabled={isLoggingIn}
                   className="w-full py-3.5 bg-linear-to-r from-rose-400 to-pink-500 hover:from-rose-500 hover:to-pink-600 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all active:scale-[0.98]"
                 >
-                  {isLoggingIn ? '💖 กำลังเชื่อมต่อห้องคู่รัก...' : 'เชื่อมเข้าร่วมห้องคู่รัก 💑'}
+                  {isLoggingIn ? '💖 กำลังเข้าสู่ระบบห้องความทรงจำ...' : 'เข้าสู่ระบบ / เชื่อมต่อเข้าห้องรักเดิม 💑'}
                 </button>
               </form>
             )}
