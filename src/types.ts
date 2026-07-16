@@ -38,6 +38,7 @@ export interface Memory {
   createdAt: string;
   likes: string[]; // array of user IDs who liked
   comments: Comment[];
+  category?: string; // Optional album or category category
 }
 
 export interface Comment {

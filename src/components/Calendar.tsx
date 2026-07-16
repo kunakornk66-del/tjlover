@@ -3,13 +3,15 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Calendar as CalendarIcon, Clock, Plus, Trash2, Tag, ChevronLeft, ChevronRight, X, Heart, Sparkles } from 'lucide-react';
 import { request } from '../lib/api';
 import { CalendarEvent } from '../types';
+import CoupleConnectWidget from './CoupleConnectWidget';
 
 interface CalendarProps {
   currentUser: any;
   couple: any;
+  onRefreshData?: () => void;
 }
 
-export default function Calendar({ currentUser, couple }: CalendarProps) {
+export default function Calendar({ currentUser, couple, onRefreshData }: CalendarProps) {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isAdding, setIsAdding] = useState(false);
@@ -32,8 +34,10 @@ export default function Calendar({ currentUser, couple }: CalendarProps) {
   };
 
   useEffect(() => {
-    fetchEvents();
-  }, []);
+    if (currentUser.coupleId) {
+      fetchEvents();
+    }
+  }, [currentUser.coupleId]);
 
   // Calendar calculations
   const year = currentDate.getFullYear();

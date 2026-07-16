@@ -51,11 +51,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const checkConnection = async (user: any) => {
     try {
       const res = await request('/api/auth/me');
-      if (res.user.coupleId) {
-        onLoginSuccess(res.user, res.partner, res.couple);
-      } else {
-        setTempUser(res.user);
-      }
+      onLoginSuccess(res.user, res.partner, res.couple);
     } catch (err: any) {
       setError(err.message || 'เกิดข้อผิดพลาดในการดึงข้อมูลคู่รัก');
     }

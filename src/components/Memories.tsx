@@ -3,12 +3,14 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Heart, MessageCircle, Calendar, Plus, X, Image as ImageIcon, Send, User, Trash2, ArrowRight, LayoutGrid, Eye } from 'lucide-react';
 import { request } from '../lib/api';
 import { Memory } from '../types';
+import CoupleConnectWidget from './CoupleConnectWidget';
 
 interface MemoriesProps {
   currentUser: any;
+  onRefreshData?: () => void;
 }
 
-export default function Memories({ currentUser }: MemoriesProps) {
+export default function Memories({ currentUser, onRefreshData }: MemoriesProps) {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [viewMode, setViewMode] = useState<'timeline' | 'gallery'>('timeline');
@@ -37,8 +39,10 @@ export default function Memories({ currentUser }: MemoriesProps) {
   };
 
   useEffect(() => {
-    fetchMemories();
-  }, []);
+    if (currentUser.coupleId) {
+      fetchMemories();
+    }
+  }, [currentUser.coupleId]);
 
   // Keep selectedLightboxImage in sync with updated memories
   useEffect(() => {

@@ -67,8 +67,8 @@ export default function App() {
     );
   }
 
-  // If we are logged in AND we have a matched partner / couple room, go to dashboard
-  if (currentUser && currentUser.coupleId && partner) {
+  // If we are logged in, go to dashboard
+  if (currentUser) {
     return (
       <Dashboard 
         currentUser={currentUser}

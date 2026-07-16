@@ -3,15 +3,17 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Send, Image, Trash2, ShieldAlert, Sparkles, Plus, X, Heart, Eye } from 'lucide-react';
 import { request } from '../lib/api';
 import { ChatMessage } from '../types';
+import CoupleConnectWidget from './CoupleConnectWidget';
 
 interface ChatProps {
   currentUser: any;
   partner: any;
   isActive: boolean;
   onNewMessageReceived?: () => void;
+  onRefreshData?: () => void;
 }
 
-export default function Chat({ currentUser, partner, isActive, onNewMessageReceived }: ChatProps) {
+export default function Chat({ currentUser, partner, isActive, onNewMessageReceived, onRefreshData }: ChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [images, setImages] = useState<string[]>([]);
@@ -29,6 +31,7 @@ export default function Chat({ currentUser, partner, isActive, onNewMessageRecei
 
   // Poll for messages every 2.5 seconds
   useEffect(() => {
+    if (!currentUser.coupleId) return;
     const fetchMessages = async () => {
       try {
         const data = await request('/api/chats');
@@ -55,7 +58,7 @@ export default function Chat({ currentUser, partner, isActive, onNewMessageRecei
     fetchMessages();
     const interval = setInterval(fetchMessages, 2500);
     return () => clearInterval(interval);
-  }, [currentUser.id, onNewMessageReceived]);
+  }, [currentUser.id, currentUser.coupleId, onNewMessageReceived]);
 
   // Scroll to bottom on messages load
   useEffect(() => {
@@ -114,6 +117,10 @@ export default function Chat({ currentUser, partner, isActive, onNewMessageRecei
     }
   };
 
+  const partnerName = partner ? partner.name : "ที่รักของคุณ";
+  const partnerAvatar = partner ? partner.avatar : "https://api.dicebear.com/7.x/adventurer/svg?seed=LovePlaceholder";
+  const partnerStatus = partner ? (partner.customStatus || "Happy together! 💕") : "รอที่รักเชื่อมต่ออยู่นะ... ⏳";
+
   return (
     <div className="flex flex-col h-[calc(100vh-80px)] md:h-[calc(100vh-40px)] bg-white/80 backdrop-blur-md border border-rose-100 rounded-3xl overflow-hidden shadow-xl relative">
       {/* Top Bar */}
@@ -121,21 +128,25 @@ export default function Chat({ currentUser, partner, isActive, onNewMessageRecei
         <div className="flex items-center gap-3">
           <div className="relative">
             <img 
-              src={partner.avatar} 
-              alt={partner.name} 
+              src={partnerAvatar} 
+              alt={partnerName} 
               className="w-10 h-10 rounded-full object-cover border border-rose-200" 
               referrerPolicy="no-referrer"
             />
-            <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></span>
+            {partner ? (
+              <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></span>
+            ) : (
+              <span className="absolute bottom-0 right-0 w-3 h-3 bg-stone-300 border-2 border-white rounded-full"></span>
+            )}
           </div>
           <div>
-            <h3 className="font-semibold text-rose-950 text-sm leading-tight">{partner.name}</h3>
-            <span className="text-xs text-rose-450 mt-0.5 block">{partner.customStatus || "Happy together! 💕"}</span>
+            <h3 className="font-semibold text-rose-950 text-sm leading-tight">{partnerName}</h3>
+            <span className="text-xs text-rose-450 mt-0.5 block">{partnerStatus}</span>
           </div>
         </div>
         <div className="flex items-center gap-1.5 text-xs text-white font-medium bg-gradient-to-r from-rose-500 to-orange-400 px-3 py-1.5 rounded-full border border-rose-100/30 shadow-sm">
           <Heart className="w-3.5 h-3.5 fill-white text-white animate-pulse" />
-          <span>แชทส่วนตัวเฉพาะเราสองคน</span>
+          <span>{partner ? "แชทส่วนตัวเฉพาะเราสองคน" : "แชทลับส่วนตัวของคุณ"}</span>
         </div>
       </div>
 
@@ -166,8 +177,8 @@ export default function Chat({ currentUser, partner, isActive, onNewMessageRecei
               >
                 {!isMe && (
                   <img 
-                    src={partner.avatar} 
-                    alt={partner.name} 
+                    src={partnerAvatar} 
+                    alt={partnerName} 
                     className="w-8 h-8 rounded-full object-cover self-end border border-rose-100" 
                     referrerPolicy="no-referrer"
                   />

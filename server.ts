@@ -102,6 +102,15 @@ async function startServer() {
     const userId = crypto.randomUUID();
     const token = `token-${userId}-${crypto.randomBytes(8).toString("hex")}`;
     const inviteCode = `${name.replace(/[^a-zA-Z0-9]/g, "").substring(0, 4).toUpperCase()}-${crypto.randomInt(1000, 9999)}`;
+    const coupleId = crypto.randomUUID();
+
+    const newCouple = {
+      id: coupleId,
+      partner1Id: userId,
+      partner2Id: null,
+      anniversaryDate: new Date().toISOString().split("T")[0],
+      themeColor: "pink"
+    };
 
     const newUser = {
       id: userId,
@@ -111,11 +120,12 @@ async function startServer() {
       inviteCode,
       avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(name)}`,
       partnerId: null,
-      coupleId: null,
+      coupleId: coupleId,
       customStatus: "Happy together! 💕",
       token
     };
 
+    db.couples.push(newCouple);
     db.users.push(newUser);
     saveDB(db);
 
@@ -158,6 +168,22 @@ async function startServer() {
 
     let partner = null;
     let couple = null;
+
+    // If user has no coupleId, create a solo room automatically so they can immediately use all features!
+    if (!user.coupleId) {
+      const coupleId = crypto.randomUUID();
+      const newCouple = {
+        id: coupleId,
+        partner1Id: user.id,
+        partner2Id: null,
+        anniversaryDate: new Date().toISOString().split("T")[0], // Default anniversary today
+        themeColor: "pink"
+      };
+      user.coupleId = coupleId;
+      db.couples.push(newCouple);
+      saveDB(db);
+    }
+
     if (user.partnerId) {
       partner = db.users.find(u => u.id === user.partnerId);
       if (partner) {
@@ -205,37 +231,47 @@ async function startServer() {
       return res.status(400).json({ error: "You cannot connect with yourself!" });
     }
 
-    if (partner.coupleId || partner.partnerId) {
+    if (partner.partnerId && partner.partnerId !== req.user.id) {
       return res.status(400).json({ error: "This partner is already connected to someone else." });
     }
 
     const me = db.users.find(u => u.id === req.user.id);
-    if (me.coupleId || me.partnerId) {
+    if (me.partnerId && me.partnerId !== partner.id) {
       return res.status(400).json({ error: "You are already connected to someone." });
     }
 
-    // Connect them! Create a new couple room
-    const coupleId = crypto.randomUUID();
-    const newCouple = {
-      id: coupleId,
-      partner1Id: me.id,
-      partner2Id: partner.id,
-      anniversaryDate: new Date().toISOString().split("T")[0], // Default anniversary today
-      themeColor: "pink"
-    };
+    // Connect them! Determine which couple room (ID) to keep.
+    // If the partner already has a solo room (where partner2Id is null), we'll adopt that room to preserve partner's solo work!
+    // Otherwise, we use my existing solo room.
+    let targetCoupleId = partner.coupleId || me.coupleId || crypto.randomUUID();
+
+    let coupleObj = db.couples.find(c => c.id === targetCoupleId);
+    if (!coupleObj) {
+      coupleObj = {
+        id: targetCoupleId,
+        partner1Id: partner.id,
+        partner2Id: me.id,
+        anniversaryDate: new Date().toISOString().split("T")[0],
+        themeColor: "pink"
+      };
+      db.couples.push(coupleObj);
+    } else {
+      // Update the existing room to have both partners
+      coupleObj.partner1Id = partner.id;
+      coupleObj.partner2Id = me.id;
+    }
 
     me.partnerId = partner.id;
-    me.coupleId = coupleId;
+    me.coupleId = targetCoupleId;
 
     partner.partnerId = me.id;
-    partner.coupleId = coupleId;
+    partner.coupleId = targetCoupleId;
 
-    db.couples.push(newCouple);
     saveDB(db);
 
     res.json({
       success: true,
-      couple: newCouple,
+      couple: coupleObj,
       partner: {
         id: partner.id,
         name: partner.name,
@@ -248,7 +284,7 @@ async function startServer() {
 
   // Update couple profiles (anniversary, theme, customStatus)
   app.post("/api/couple/update", authenticateUser, (req: any, res) => {
-    const { anniversaryDate, customStatus, avatar, name } = req.body;
+    const { anniversaryDate, customStatus, avatar, name, partnerAvatar } = req.body;
     db = initDB();
 
     const me = db.users.find(u => u.id === req.user.id);
@@ -257,6 +293,13 @@ async function startServer() {
     if (customStatus !== undefined) me.customStatus = customStatus;
     if (avatar !== undefined) me.avatar = avatar;
     if (name !== undefined) me.name = name;
+
+    if (partnerAvatar !== undefined && me.partnerId) {
+      const partnerUser = db.users.find(u => u.id === me.partnerId);
+      if (partnerUser) {
+        partnerUser.avatar = partnerAvatar;
+      }
+    }
 
     if (anniversaryDate !== undefined && me.coupleId) {
       const couple = db.couples.find(c => c.id === me.coupleId);
@@ -345,7 +388,7 @@ async function startServer() {
       return res.status(400).json({ error: "You are not connected in a couple yet" });
     }
 
-    const { title, content, date, images } = req.body;
+    const { title, content, date, images, category } = req.body;
     if (!title || !date) {
       return res.status(400).json({ error: "Title and Date are required" });
     }
@@ -363,7 +406,8 @@ async function startServer() {
       creatorName: me.name,
       createdAt: new Date().toISOString(),
       likes: [],
-      comments: []
+      comments: [],
+      category: category ? category.trim() : "ทั่วไป 🌸"
     };
 
     db.memories.push(newMemory);
