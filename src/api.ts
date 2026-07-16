@@ -261,59 +261,84 @@ async function handleLocalFallback(url: string, options?: RequestInit): Promise<
       return new MockResponse(200, { user, couple }) as any;
     }
 
-    // 2.5 POST /api/simple/create (Local Fallback)
-    if (method === 'POST' && url.startsWith('/api/simple/create')) {
-      const { yourName, partnerName, roomCode, anniversaryDate } = JSON.parse(options?.body as string || '{}');
-      if (!yourName || !roomCode) {
-        return new MockResponse(400, { error: 'กรุณาระบุชื่อเล่นของคุณและรหัสห้องคู่รักด้วยค่ะ' }) as any;
+    // 2.5 POST /api/simple/login (Local Fallback)
+    if (method === 'POST' && url.startsWith('/api/simple/login')) {
+      const { email, name } = JSON.parse(options?.body as string || '{}');
+      if (!email || !email.trim()) {
+        return new MockResponse(400, { error: 'กรุณาระบุอีเมลเพื่อใช้เข้าสู่ระบบด้วยค่ะ' }) as any;
       }
 
-      const cleanedYourName = yourName.trim();
-      const cleanedPartnerName = partnerName ? partnerName.trim() : "";
-      
-      let cleanedCode = roomCode.toUpperCase().replace(/\s+/g, "").trim();
-      if (cleanedCode.length === 4) {
-        cleanedCode = "LOVE-" + cleanedCode;
-      } else if (cleanedCode.length === 8 && cleanedCode.startsWith("LOVE")) {
-        cleanedCode = "LOVE-" + cleanedCode.substring(4);
-      }
+      const cleanedEmail = email.toLowerCase().trim();
+      const cleanedName = name ? name.trim() : email.split('@')[0];
 
-      const existingCouple = Object.values(db.couples).find(
-        (c) => c.pairingCode.toUpperCase().trim() === cleanedCode
-      );
-
-      if (existingCouple) {
-        return new MockResponse(400, { 
-          error: `รหัสห้องคู่รัก "${cleanedCode}" นี้ถูกสร้างขึ้นแล้วค่ะ! หากนี่คือห้องของคุณ กรุณากดแถบ "เข้าร่วมห้องคู่รัก" แล้วป้อนชื่อเล่นกับรหัสห้องเพื่อเข้าสู่ระบบเชื่อมต่อได้ทันทีค่ะ` 
-        }) as any;
-      }
-
-      const ownerEmail = `${cleanedYourName.toLowerCase()}_${cleanedCode.toLowerCase().replace('-', '')}@couple.app`;
-      let ownerUser = db.users[ownerEmail];
-      if (!ownerUser) {
-        ownerUser = {
-          email: ownerEmail,
-          name: cleanedYourName,
+      let user = db.users[cleanedEmail];
+      if (!user) {
+        user = {
+          email: cleanedEmail,
+          name: cleanedName,
           picture: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150"
         };
-        db.users[ownerEmail] = ownerUser;
+        db.users[cleanedEmail] = user;
+      } else {
+        if (name && name.trim()) {
+          user.name = cleanedName;
+        }
       }
 
-      let partnerEmail = undefined;
-      if (cleanedPartnerName) {
-        partnerEmail = `${cleanedPartnerName.toLowerCase()}_${cleanedCode.toLowerCase().replace('-', '')}@couple.app`;
+      let couple: Couple | null = null;
+      if (user.coupleId && db.couples[user.coupleId]) {
+        couple = db.couples[user.coupleId];
+      } else {
+        const foundCouple = Object.values(db.couples).find(
+          (c) => (c.ownerEmail?.toLowerCase().trim() === cleanedEmail || c.partnerEmail?.toLowerCase().trim() === cleanedEmail)
+        );
+        if (foundCouple) {
+          user.coupleId = foundCouple.id;
+          couple = foundCouple;
+          db.users[cleanedEmail] = user;
+        }
+      }
+
+      saveLocalDB(db);
+      return new MockResponse(200, { user, couple }) as any;
+    }
+
+    // 2.6 POST /api/simple/create-space (Local Fallback)
+    if (method === 'POST' && url.startsWith('/api/simple/create-space')) {
+      const { email, name, anniversaryDate } = JSON.parse(options?.body as string || '{}');
+      if (!email) {
+        return new MockResponse(400, { error: 'กรุณาเข้าสู่ระบบก่อนสร้างพื้นที่ห้องคู่รักค่ะ' }) as any;
+      }
+
+      const cleanedEmail = email.toLowerCase().trim();
+      const cleanedName = name ? name.trim() : email.split('@')[0];
+
+      let user = db.users[cleanedEmail];
+      if (!user) {
+        user = {
+          email: cleanedEmail,
+          name: cleanedName,
+          picture: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150"
+        };
+        db.users[cleanedEmail] = user;
+      }
+
+      const chars = "ACDEFGHJKLMNPQRTUVWXY34679";
+      let generatedCode = "LOVE-";
+      for (let i = 0; i < 4; i++) {
+        generatedCode += chars.charAt(Math.floor(Math.random() * chars.length));
       }
 
       const coupleId = `couple-${Date.now()}`;
       const couple: Couple = {
         id: coupleId,
-        ownerEmail: ownerEmail,
-        partnerEmail: partnerEmail,
-        pairingCode: cleanedCode,
+        ownerEmail: cleanedEmail,
+        partnerEmail: undefined,
+        pairingCode: generatedCode,
         relationshipInfo: {
           anniversaryDate: anniversaryDate || new Date().toISOString().split("T")[0],
-          userNickname: cleanedYourName,
-          partnerNickname: cleanedPartnerName || "คุณแฟน 🐰",
+          userNickname: cleanedName,
+          partnerNickname: "คุณแฟน 🐰",
           loveMessage: "อยู่รักและเป็นรอยยิ้มของกันและกันแบบนี้ไปทุกๆ วันเลยน้าาา 🥰",
           userAvatar: "🐻",
           partnerAvatar: "🐰"
@@ -325,26 +350,36 @@ async function handleLocalFallback(url: string, options?: RequestInit): Promise<
       };
 
       db.couples[coupleId] = couple;
-      ownerUser.coupleId = coupleId;
-      db.users[ownerEmail] = ownerUser;
+      user.coupleId = coupleId;
+      db.users[cleanedEmail] = user;
 
       saveLocalDB(db);
-      return new MockResponse(200, { user: ownerUser, couple }) as any;
+      return new MockResponse(200, { user, couple }) as any;
     }
 
-    // 2.6 POST /api/simple/auth (Local Fallback)
-    if (method === 'POST' && url.startsWith('/api/simple/auth')) {
-      const { yourName, roomCode } = JSON.parse(options?.body as string || '{}');
-      if (!yourName || !roomCode) {
-        return new MockResponse(400, { error: 'กรุณาระบุชื่อเล่นและรหัสห้องคู่รักด้วยค่ะ' }) as any;
+    // 2.7 POST /api/simple/link-space (Local Fallback)
+    if (method === 'POST' && url.startsWith('/api/simple/link-space')) {
+      const { email, name, pairingCode } = JSON.parse(options?.body as string || '{}');
+      if (!email || !pairingCode) {
+        return new MockResponse(400, { error: 'ข้อมูลไม่ครบถ้วน กรุณาระบุรหัสคู่รักด้วยค่ะ' }) as any;
       }
 
-      const cleanedYourName = yourName.trim();
-      let cleanedCode = roomCode.toUpperCase().replace(/\s+/g, "").trim();
+      const cleanedEmail = email.toLowerCase().trim();
+      const cleanedName = name ? name.trim() : email.split('@')[0];
+
+      let user = db.users[cleanedEmail];
+      if (!user) {
+        user = {
+          email: cleanedEmail,
+          name: cleanedName,
+          picture: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150"
+        };
+        db.users[cleanedEmail] = user;
+      }
+
+      let cleanedCode = pairingCode.toUpperCase().replace(/\s+/g, "").trim();
       if (cleanedCode.length === 4) {
         cleanedCode = "LOVE-" + cleanedCode;
-      } else if (cleanedCode.length === 8 && cleanedCode.startsWith("LOVE")) {
-        cleanedCode = "LOVE-" + cleanedCode.substring(4);
       }
 
       const couple = Object.values(db.couples).find(
@@ -352,65 +387,19 @@ async function handleLocalFallback(url: string, options?: RequestInit): Promise<
       );
 
       if (!couple) {
-        return new MockResponse(404, { 
-          error: `ไม่พบห้องคู่รักรหัส "${cleanedCode}" ในระบบค่ะ กรุณาตรวจสอบรหัสห้อง หรือกดแถบ "สร้างห้องคู่รักใหม่" หากต้องการสร้างห้องใหม่ร่วมกันนะคะ` 
+        return new MockResponse(404, {
+          error: `ไม่พบห้องคู่รักรหัส "${cleanedCode}" ในระบบเลยค่ะ รบกวนให้ทางแฟนของคุณแจ้งรหัสที่แสดงอยู่บนหน้าจอด้านบนให้ถูกต้องนะคะ`
         }) as any;
       }
 
-      const standardEmail = `${cleanedYourName.toLowerCase()}_${cleanedCode.toLowerCase().replace('-', '')}@couple.app`;
-
-      const getSimplifiedLocal = (name: string) => {
-        if (!name) return "";
-        return name
-          .toLowerCase()
-          .replace(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDC00-\uDFFF]/g, '')
-          .replace(/\s+/g, '')
-          .trim();
-      };
-
-      let matchedUserEmail = standardEmail;
-      let isOwner = false;
-      let isPartner = false;
-
-      const simplifiedInput = getSimplifiedLocal(cleanedYourName);
-      const simplifiedOwnerNick = getSimplifiedLocal(couple.relationshipInfo.userNickname);
-      const simplifiedPartnerNick = getSimplifiedLocal(couple.relationshipInfo.partnerNickname);
-
-      if (couple.ownerEmail.toLowerCase().trim() === standardEmail.toLowerCase().trim() || simplifiedInput === simplifiedOwnerNick) {
-        isOwner = true;
-        matchedUserEmail = couple.ownerEmail;
-      } else if ((couple.partnerEmail && couple.partnerEmail.toLowerCase().trim() === standardEmail.toLowerCase().trim()) || simplifiedInput === simplifiedPartnerNick) {
-        isPartner = true;
-        matchedUserEmail = couple.partnerEmail || standardEmail;
-      } else {
-        if (!couple.partnerEmail) {
-          isPartner = true;
-          matchedUserEmail = standardEmail;
-          couple.partnerEmail = standardEmail;
-          couple.relationshipInfo.partnerNickname = cleanedYourName;
-        } else {
-          return new MockResponse(400, {
-            error: `ขออภัยค่ะ ห้องรักรหัสนี้เชื่อมต่อคู่รักเต็มแล้วค่ะ (เจ้าของห้อง: ${couple.relationshipInfo.userNickname} และ แฟน: ${couple.relationshipInfo.partnerNickname}) หากคุณป้อนข้อมูลถูกต้อง กรุณาป้อนชื่อเล่นของคุณให้ตรงกับชื่อเล่นที่ลงทะเบียนไว้นะคะ`
-          }) as any;
-        }
-      }
-
-      let user = db.users[matchedUserEmail.toLowerCase().trim()];
-      if (!user) {
-        user = {
-          email: matchedUserEmail,
-          name: cleanedYourName,
-          picture: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150",
-          coupleId: couple.id
-        };
-        db.users[matchedUserEmail.toLowerCase().trim()] = user;
-      } else {
+      if (couple.ownerEmail.toLowerCase().trim() === cleanedEmail) {
         user.coupleId = couple.id;
-        db.users[matchedUserEmail.toLowerCase().trim()] = user;
-      }
-
-      if (isPartner && !couple.relationshipInfo.partnerNickname) {
-        couple.relationshipInfo.partnerNickname = cleanedYourName;
+        db.users[cleanedEmail] = user;
+      } else {
+        couple.partnerEmail = cleanedEmail;
+        couple.relationshipInfo.partnerNickname = cleanedName;
+        user.coupleId = couple.id;
+        db.users[cleanedEmail] = user;
       }
 
       saveLocalDB(db);

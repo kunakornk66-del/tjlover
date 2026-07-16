@@ -23,6 +23,7 @@ interface SecuritySectionProps {
   onLogout: () => void;
   onUpdatePartnerEmail: (partnerEmail: string) => Promise<void>;
   onResetFactory: () => Promise<void>;
+  onLinkSpace?: (pairingCode: string) => Promise<void>;
   notificationPermission?: string;
   onRequestNotificationPermission?: () => void;
 }
@@ -40,12 +41,44 @@ export default function SecuritySection({
   onLogout,
   onUpdatePartnerEmail,
   onResetFactory,
+  onLinkSpace,
   notificationPermission = 'default',
   onRequestNotificationPermission = () => {},
 }: SecuritySectionProps) {
   const [passphrase, setPassphrase] = useState('LOVEMYPARTNER1314');
   const [logs, setLogs] = useState<DiagnosticLog[]>(() => getDiagnosticLogs());
   const [logFilter, setLogFilter] = useState<'all' | 'error' | 'request' | 'system'>('all');
+  const [linkPairingCode, setLinkPairingCode] = useState('');
+  const [isLinking, setIsLinking] = useState(false);
+
+  const handleLinkSpaceSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onLinkSpace) return;
+    if (!linkPairingCode.trim()) {
+      onTriggerNotification('⚠️ กรุณากรอกรหัสคู่รักของแฟนคุณด้วยค่ะ');
+      return;
+    }
+    setIsLinking(true);
+    try {
+      await onLinkSpace(linkPairingCode.trim());
+      setLinkPairingCode('');
+    } catch (err: any) {
+      console.error(err);
+      onTriggerNotification(`⚠️ ${err.message || 'เชื่อมต่อไม่สำเร็จค่ะ'}`);
+    } finally {
+      setIsLinking(false);
+    }
+  };
+
+  const handleCopyPairingCode = () => {
+    const pCode = currentCouple?.pairingCode || '';
+    if (!pCode) {
+      onTriggerNotification('⚠️ ยังไม่มีรหัสคู่รักในระบบค่ะ');
+      return;
+    }
+    navigator.clipboard.writeText(pCode);
+    onTriggerNotification('📋 คัดลอกรหัสคู่รัก (Pairing Code) ไปยังคลิปบอร์ดสำเร็จแล้วค่ะ! 💕');
+  };
 
   useEffect(() => {
     setLogs(getDiagnosticLogs());
@@ -690,6 +723,70 @@ export default function SecuritySection({
 
             <div className="text-[10px] text-gray-400 font-semibold leading-relaxed">
               *เคล็ดลับ: โทนสีจะได้รับการปรับเปลี่ยนอย่างกลมกลืนและแสดงผลเหมือนกันในทุกฟังก์ชันการใช้งานของโปรแกรม (รวมถึงประวัติแชท ความทรงจำ และปฏิทินสองเรา) โดยจะบันทึกสิทธิ์ลงเครื่องให้อัตโนมัติเลยค่ะ!
+            </div>
+          </div>
+        </div>
+
+        {/* Couple Pairing & Connection Settings Card */}
+        <div className="kawaii-card p-5 bg-white space-y-4">
+          <div className="flex items-center gap-2.5 mb-2">
+            <span className="p-2.5 bg-[#FFEFEF] rounded-full text-[#FF8E8E]">
+              <Link className="w-5 h-5" />
+            </span>
+            <div>
+              <h3 className="font-extrabold text-[#5D4E4E] text-sm">🔗 รหัสคู่รักและการเชื่อมต่อห้องคู่รัก (Couple Pairing & Link)</h3>
+              <p className="text-xs text-[#A89090]">คัดลอกรหัสคู่รักของคุณให้แฟน หรือใส่รหัสคู่รักของแฟนเพื่อทำการเชื่อมโยงห้องเข้าด้วยกันค่ะ</p>
+            </div>
+          </div>
+
+          <div className="p-4 bg-[#FFF9F5] border border-[#F0E6DD] rounded-2xl space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Copy pairing code */}
+              <div className="bg-white p-4 rounded-xl border border-[#F0E6DD] flex flex-col justify-between gap-3 text-left">
+                <div>
+                  <h4 className="text-xs font-black text-[#5D4E4E] mb-1">🔑 รหัสห้องคู่รักของคุณ (Your Pairing Code)</h4>
+                  <p className="text-[11px] text-gray-400">ส่งรหัสห้องนี้ไปให้แฟนของคุณ นำไปใส่ในเมนูตั้งค่าของเขาเพื่อเชื่อมต่อมายังห้องของคุณทันทีค่ะ</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 bg-[#FFF9F5] text-center font-black font-mono text-base py-2.5 rounded-xl text-[#FF8E8E] border border-[#FFD9D9] select-all">
+                    {currentCouple?.pairingCode || 'ยังไม่สร้างรหัส'}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyPairingCode}
+                    className="p-2.5 bg-[#FFF3F3] hover:bg-[#FFE6E6] text-[#FF8E8E] border border-[#FFD9D9] font-bold rounded-xl cursor-pointer transition-all active:scale-95"
+                    title="คัดลอกรหัสคู่รัก"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Enter partner's pairing code to join */}
+              <div className="bg-white p-4 rounded-xl border border-[#F0E6DD] flex flex-col justify-between gap-3 text-left">
+                <div>
+                  <h4 className="text-xs font-black text-[#5D4E4E] mb-1">💑 เชื่อมโยงไปยังห้องคู่รักของแฟน (Connect to Partner's Room)</h4>
+                  <p className="text-[11px] text-gray-400">กรอกรหัสห้องคู่รักที่แฟนของคุณเป็นคนสร้างขึ้น เพื่อย้ายหรือเชื่อมต่อเข้าไปใช้งานห้องเดียวกันทันที</p>
+                </div>
+                <form onSubmit={handleLinkSpaceSubmit} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={linkPairingCode}
+                    onChange={(e) => setLinkPairingCode(e.target.value.toUpperCase().replace(/[^a-zA-Z0-9-]/g, ''))}
+                    placeholder="เช่น LOVE-ABCD"
+                    className="flex-1 text-xs px-3 py-2 rounded-xl border-2 border-[#F0E6DD] focus:border-[#FF8E8E] outline-hidden bg-[#FFF9F5] font-black text-[#FF8E8E] tracking-wider text-center"
+                    maxLength={12}
+                  />
+                  <button
+                    type="submit"
+                    disabled={isLinking || !linkPairingCode.trim()}
+                    className="px-4 py-2 bg-[#FF8E8E] hover:bg-[#FF8E8E]/85 disabled:opacity-50 text-white font-black rounded-xl text-xs flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    {isLinking ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
+                    เชื่อมต่อ 💖
+                  </button>
+                </form>
+              </div>
             </div>
           </div>
         </div>

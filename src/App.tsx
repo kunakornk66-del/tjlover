@@ -324,8 +324,9 @@ export default function App() {
   }, [currentUser, currentCouple]);
 
   // Handle Login submission
-  const handleLogin = async (email: string, name?: string, picture?: string) => {
+  const handleSimpleLogin = async (email: string, name: string) => {
     setIsLoggingIn(true);
+    setAuthMessage(null);
     try {
       // Clear all existing states before fetching new login session to avoid bleed-over
       setMessages([]);
@@ -333,10 +334,10 @@ export default function App() {
       setEvents([]);
       setMoodLogs([]);
 
-      const response = await appFetch('/api/auth/login', {
+      const response = await appFetch('/api/simple/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, name, picture }),
+        body: JSON.stringify({ email: email.trim(), name: name.trim() }),
       });
 
       if (response.ok) {
@@ -348,27 +349,100 @@ export default function App() {
           setCurrentCouple(data.couple);
           setRelationshipInfo(data.couple.relationshipInfo);
           fetchCoupleData(data.couple.id);
-          triggerNotification(`💖 ล็อกอินสำเร็จ ยินดีต้อนรับกลับบ้านของสองเราค่ะ!`, 'love');
+          triggerNotification(`💖 เข้าสู่ระบบสำเร็จ ยินดีต้อนรับกลับรังรักสองเราค่ะ!`, 'love');
         } else {
           setCurrentCouple(null);
           setRelationshipInfo({
             anniversaryDate: new Date().toISOString().split('T')[0],
-            userNickname: '',
-            partnerNickname: '',
-            loveMessage: '',
-            userAvatar: '',
-            partnerAvatar: '',
+            userNickname: name.trim() || 'คุณหมีน้อย 🐻',
+            partnerNickname: 'คุณกระต่ายอ้วน 🐰',
+            loveMessage: 'อยู่รักและเป็นรอยยิ้มของกันและกันแบบนี้ไปทุกๆ วันเลยน้าาา 🥰',
+            userAvatar: '🐻',
+            partnerAvatar: '🐰',
           });
-          triggerNotification(`🌱 ล็อกอินสำเร็จแล้วค่ะ! ขั้นตอนต่อไปมาเริ่มเชื่อมต่อหัวใจกันน้า`, 'info');
+          triggerNotification(`🌱 เข้าสู่ระบบสำเร็จแล้วค่ะ! มาร่วมสร้างห้องคู่รักหรือเชื่อมต่อรักกันนะคะ`, 'info');
         }
       } else {
-        alert('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์');
+        const errData = await response.json();
+        setAuthMessage({ text: errData.error || 'เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', type: 'error' });
       }
     } catch (err) {
       console.error(err);
-      alert('ไม่สามารถติดต่อเซิร์ฟเวอร์ระบบล็อกอินได้');
+      setAuthMessage({ text: 'ไม่สามารถติดต่อเซิร์ฟเวอร์ระบบล็อกอินได้ในขณะนี้ค่ะ', type: 'error' });
     } finally {
       setIsLoggingIn(false);
+    }
+  };
+
+  // Setup Couple Space (Create action)
+  const handleCreateSpace = async (anniversaryDate: string) => {
+    if (!currentUser) return;
+    setIsSettingUpSpace(true);
+    try {
+      const response = await appFetch('/api/simple/create-space', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: currentUser.email,
+          name: currentUser.name,
+          anniversaryDate
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'ไม่สามารถสร้างห้องคู่รักได้ค่ะ');
+      }
+
+      const data = await response.json();
+      setCurrentUser(data.user);
+      setCurrentCouple(data.couple);
+      setRelationshipInfo(data.couple.relationshipInfo);
+      localStorage.setItem('couple_user', JSON.stringify(data.user));
+
+      fetchCoupleData(data.couple.id);
+      triggerNotification('🏡 เริ่มต้นพื้นที่รักแสนอบอุ่นและห้องสองเราสำเร็จแล้วจ้า!', 'love');
+    } catch (err: any) {
+      console.error(err);
+      triggerNotification(`⚠️ ${err.message}`, 'info');
+    } finally {
+      setIsSettingUpSpace(false);
+    }
+  };
+
+  // Join Couple Space (Link action)
+  const handleLinkSpace = async (pairingCode: string) => {
+    if (!currentUser) return;
+    setIsSettingUpSpace(true);
+    try {
+      const response = await appFetch('/api/simple/link-space', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: currentUser.email,
+          name: currentUser.name,
+          pairingCode: pairingCode.trim()
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'รหัสไม่ถูกต้อง ไม่พบห้องคู่รักในระบบค่ะ');
+      }
+
+      const data = await response.json();
+      setCurrentUser(data.user);
+      setCurrentCouple(data.couple);
+      setRelationshipInfo(data.couple.relationshipInfo);
+      localStorage.setItem('couple_user', JSON.stringify(data.user));
+
+      fetchCoupleData(data.couple.id);
+      triggerNotification('💑 เชื่อมต่อระบบห้องคู่รักสองเราสำเร็จแล้ว ยินดีต้อนรับกลับรังรักค่ะ!', 'love');
+    } catch (err: any) {
+      console.error(err);
+      triggerNotification(`⚠️ ${err.message}`, 'info');
+    } finally {
+      setIsSettingUpSpace(false);
     }
   };
 
@@ -510,8 +584,13 @@ export default function App() {
     setAuthMessage(null);
 
     const emailTrimmed = loginEmail.trim();
+    const nameTrimmed = loginName.trim();
     if (!emailTrimmed) {
-      setAuthMessage({ text: 'กรุณากรอกอีเมลด้วยนะคะ', type: 'error' });
+      setAuthMessage({ text: 'กรุณากรอกอีเมลด้วยนะคะ 📧', type: 'error' });
+      return;
+    }
+    if (!nameTrimmed) {
+      setAuthMessage({ text: 'กรุณากรอกชื่อเล่นของคุณด้วยนะคะ ✍️', type: 'error' });
       return;
     }
 
@@ -522,16 +601,7 @@ export default function App() {
       return;
     }
 
-    if (emailTrimmed.toLowerCase().endsWith('@app.com')) {
-      setAuthMessage({
-        text: 'ไม่สามารถใช้อีเมลนามสกุล @app.com เพื่อล็อกอินด่วนได้ค่ะ กรุณาใช้แถบ "ชื่อผู้ใช้งาน" หรือใช้อีเมลจริงทั่วไปของคุณ (@gmail.com) นะคะ',
-        type: 'error'
-      });
-      return;
-    }
-
-    // Submit using the existing stable handleLogin helper
-    await handleLogin(emailTrimmed, loginName.trim() || undefined);
+    await handleSimpleLogin(emailTrimmed, nameTrimmed);
   };
 
   // Sign Up / Register using Username and Password
@@ -783,7 +853,7 @@ export default function App() {
     applyTheme(savedTheme);
 
     if (currentUser) {
-      handleLogin(currentUser.email, currentUser.name, currentUser.picture);
+      handleSimpleLogin(currentUser.email, currentUser.name || '');
     }
   }, []);
 
@@ -821,7 +891,7 @@ export default function App() {
             
             // Also force refresh active user's session from the server
             if (currentUser) {
-              handleLogin(currentUser.email, currentUser.name, currentUser.picture);
+              handleSimpleLogin(currentUser.email, currentUser.name || '');
             }
           }
         }
@@ -853,91 +923,13 @@ export default function App() {
   // Setup Couple Space (Create action)
   const handleCreateCouple = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser) return;
-    setIsSettingUpSpace(true);
-
-    try {
-      const response = await appFetch('/api/couple/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: currentUser.email,
-          partnerEmail: partnerEmail || undefined,
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setCurrentUser(data.user);
-        setCurrentCouple(data.couple);
-        setRelationshipInfo(data.couple.relationshipInfo);
-        
-        // Push initial updates
-        await appFetch(`/api/couple/update-info`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            coupleId: data.couple.id,
-            info: {
-              userNickname: userNicknameInput,
-              partnerNickname: partnerNicknameInput,
-            },
-          }),
-        });
-
-        localStorage.setItem('couple_user', JSON.stringify(data.user));
-        
-        // Refresh full data
-        handleLogin(currentUser.email, currentUser.name, currentUser.picture);
-        triggerNotification('🏡 สร้างรังรักแสนอบอุ่นและห้องสองเราสำเร็จแล้วจ้า!', 'love');
-      } else {
-        alert('เกิดข้อผิดพลาดในการเปิดคู่รักใหม่');
-      }
-    } catch (err) {
-      console.error(err);
-      alert('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์เพื่อสร้างคู่รักได้');
-    } finally {
-      setIsSettingUpSpace(false);
-    }
+    await handleCreateSpace(new Date().toISOString().split('T')[0]);
   };
 
   // Join Couple Space (Join action)
   const handleJoinCouple = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser || !pairingCodeInput) return;
-    setIsSettingUpSpace(true);
-
-    try {
-      const response = await appFetch('/api/couple/join', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: currentUser.email,
-          pairingCode: pairingCodeInput,
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setCurrentUser(data.user);
-        setCurrentCouple(data.couple);
-        setRelationshipInfo(data.couple.relationshipInfo);
-        localStorage.setItem('couple_user', JSON.stringify(data.user));
-        localStorage.removeItem('pending_join_code');
-        
-        // Pull latest states
-        fetchCoupleData(data.couple.id);
-        triggerNotification('🔑 เชื่อมต่อหัวใจสำเร็จ! ยินดีต้อนรับเข้าสู่รังรักร่วมกันสองคนค่ะ!', 'love');
-      } else {
-        const errData = await response.json();
-        alert(errData.error || 'รหัสโปรแกรมไม่ถูกต้อง หรือห้องคู่รักเต็มแล้วค่ะ');
-      }
-    } catch (err) {
-      console.error(err);
-      alert('ไม่สามารถติดต่อเซิร์ฟเวอร์เพื่อเชื่อมต่อรหัสโปรแกรมคู่รักได้');
-    } finally {
-      setIsSettingUpSpace(false);
-    }
+    await handleLinkSpace(pairingCodeInput);
   };
 
   // Actions Handlers linked to Express Backend
@@ -1827,6 +1819,7 @@ export default function App() {
                 onTriggerNotification={triggerNotification}
                 onLogout={handleLogout}
                 onUpdatePartnerEmail={handleUpdatePartnerEmail}
+                onLinkSpace={handleLinkSpace}
                 onResetFactory={handleResetFactory}
                 notificationPermission={notificationPermission}
                 onRequestNotificationPermission={requestNotificationPermission}
