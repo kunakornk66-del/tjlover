@@ -773,36 +773,59 @@ export async function appFetch(url: string, options?: RequestInit): Promise<Resp
     const contentType = res.headers.get('content-type') || '';
     const isHtmlResponse = contentType.includes('text/html');
     
-    // Only fall back to local emulator if the server returned HTML (which means Vite served index.html instead of Express API)
-    if (isHtmlResponse) {
-      addDiagnosticLog('system', `เซิร์ฟเวอร์ตอบกลับเป็น HTML (ไม่ใช่ JSON) สำหรับ ${url} สลับเข้าโหมดจำลองในเครื่อง`);
-      return await handleLocalFallback(url, options);
-    }
-
-    // Otherwise, the server is running and returned a real JSON or text response.
-    // Do NOT fall back on 404 or 500 if it is a real API response!
-
-    // Log live response
+    // Check if the response is valid JSON
+    let isJson = false;
+    let textBody = '';
     try {
       const cloned = res.clone();
-      const text = await cloned.text();
+      textBody = await cloned.text();
       try {
-        const parsed = JSON.parse(text);
-        if (parsed.error || parsed.err) {
-          addDiagnosticLog('error', `ข้อผิดพลาดจากเซิร์ฟเวอร์สำหรับ ${url}: ${parsed.error || parsed.err}`, parsed);
-        } else if (!res.ok) {
-          addDiagnosticLog('error', `เซิร์ฟเวอร์ตอบกลับรหัสข้อผิดพลาด HTTP ${res.status} สำหรับ ${url}`, parsed);
-        } else {
-          addDiagnosticLog('response', `เซิร์ฟเวอร์ตอบกลับสำเร็จ (HTTP ${res.status}): ${url}`);
-        }
+        JSON.parse(textBody);
+        isJson = true;
       } catch {
-        if (!res.ok) {
-          addDiagnosticLog('error', `เซิร์ฟเวอร์ตอบกลับรหัสข้อผิดพลาด HTTP ${res.status} สำหรับ ${url}`);
-        } else {
-          addDiagnosticLog('response', `เซิร์ฟเวอร์ตอบกลับสำเร็จ (HTTP ${res.status}): ${url}`);
-        }
+        isJson = false;
       }
-    } catch {}
+    } catch {
+      isJson = false;
+    }
+
+    // Only fall back to local emulator if the server returned HTML or non-JSON content
+    // (which means Vite served index.html instead of Express API, or there's an Nginx / Cloud Run error page)
+    if (isHtmlResponse || !isJson) {
+      const trimmedText = textBody.trim();
+      const isHtmlText = trimmedText.startsWith('<') || trimmedText.toLowerCase().startsWith('<!doctype') || trimmedText.toLowerCase().startsWith('the page');
+      
+      if (isHtmlText || res.status === 502 || res.status === 503 || res.status === 504 || isHtmlResponse) {
+        addDiagnosticLog('system', `เซิร์ฟเวอร์ตอบกลับไม่เป็น JSON (รหัส ${res.status}) สำหรับ ${url} สลับเข้าโหมดจำลองในเครื่อง`);
+        return await handleLocalFallback(url, options);
+      }
+      
+      // If it's a 2xx success but not JSON, wrap in a safe MockResponse
+      if (res.ok) {
+        return new MockResponse(200, { success: true, text: textBody }) as any;
+      } else {
+        return new MockResponse(res.status, { error: textBody || 'เซิร์ฟเวอร์ตอบกลับรหัสข้อผิดพลาด' }) as any;
+      }
+    }
+
+    // Otherwise, the server is running and returned a real JSON response.
+    // Log live response
+    try {
+      const parsed = JSON.parse(textBody);
+      if (parsed.error || parsed.err) {
+        addDiagnosticLog('error', `ข้อผิดพลาดจากเซิร์ฟเวอร์สำหรับ ${url}: ${parsed.error || parsed.err}`, parsed);
+      } else if (!res.ok) {
+        addDiagnosticLog('error', `เซิร์ฟเวอร์ตอบกลับรหัสข้อผิดพลาด HTTP ${res.status} สำหรับ ${url}`, parsed);
+      } else {
+        addDiagnosticLog('response', `เซิร์ฟเวอร์ตอบกลับสำเร็จ (HTTP ${res.status}): ${url}`);
+      }
+    } catch {
+      if (!res.ok) {
+        addDiagnosticLog('error', `เซิร์ฟเวอร์ตอบกลับรหัสข้อผิดพลาด HTTP ${res.status} สำหรับ ${url}`);
+      } else {
+        addDiagnosticLog('response', `เซิร์ฟเวอร์ตอบกลับสำเร็จ (HTTP ${res.status}): ${url}`);
+      }
+    }
 
     return res;
   } catch (err: any) {

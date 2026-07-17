@@ -376,7 +376,7 @@ app.post("/api/simple/create", (req, res) => {
 
   // Check if room code already exists in db.couples
   const existingCouple = Object.values(db.couples).find(
-    (c) => c.pairingCode.toUpperCase().trim() === normalizedCode
+    (c) => (c.pairingCode || "").toUpperCase().trim() === normalizedCode
   );
   if (existingCouple) {
     return res.status(400).json({ error: "รหัสห้องคู่รักนี้ถูกใช้งานแล้วค่ะ กรุณาตั้งรหัสใหม่อื่นๆ นะคะ" });
@@ -431,7 +431,7 @@ app.post("/api/simple/auth", (req, res) => {
 
   // Find the couple room
   const couple = Object.values(db.couples).find(
-    (c) => c.pairingCode.toUpperCase().trim() === normalizedCode
+    (c) => (c.pairingCode || "").toUpperCase().trim() === normalizedCode
   );
 
   if (!couple) {
@@ -598,7 +598,7 @@ app.post("/api/couple/join", (req, res) => {
   }
 
   // 1. Try to find the couple by pairing code first
-  let couple = Object.values(db.couples).find((c) => c.pairingCode.toUpperCase().trim() === cleanedCode);
+  let couple = Object.values(db.couples).find((c) => (c.pairingCode || "").toUpperCase().trim() === cleanedCode);
 
   // 2. If not found, try to search pairingCode as a Username or Email of the partner
   if (!couple) {
