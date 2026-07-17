@@ -1680,6 +1680,8 @@ export default function App() {
                   userName={relationshipInfo.userNickname}
                   partnerName={relationshipInfo.partnerNickname}
                   events={events}
+                  pairingCode={currentCouple?.pairingCode}
+                  isPartnerConnected={currentCouple?.partnerEmail ? (!currentCouple.partnerEmail.startsWith('partner-') && !currentCouple.partnerEmail.endsWith('@couple.com')) : false}
                 />
                 <DailyFlashbackReminder
                   memories={memories}

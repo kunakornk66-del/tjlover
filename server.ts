@@ -367,13 +367,25 @@ function getSimplifiedName(name: string): string {
 // Robust helper to check if two room codes are equivalent (ignoring dashes and "LOVE-" prefix)
 function matchRoomCode(dbCode: string, inputCode: string): boolean {
   if (!dbCode || !inputCode) return false;
+  
+  // Strip all non-alphanumeric characters, and convert to uppercase
   const cleanDb = dbCode.toUpperCase().replace(/[^A-Z0-9]/g, "").trim();
   const cleanInput = inputCode.toUpperCase().replace(/[^A-Z0-9]/g, "").trim();
   
   if (cleanDb === cleanInput) return true;
   
+  // Strip "LOVE" from prefix if present on either side
   const stripLove = (s: string) => s.startsWith("LOVE") ? s.substring(4) : s;
-  return stripLove(cleanDb) === stripLove(cleanInput);
+  const strippedDb = stripLove(cleanDb);
+  const strippedInput = stripLove(cleanInput);
+  
+  if (strippedDb === strippedInput) return true;
+  
+  // If one string is a substring of the other or ends with the other (like "1234" vs "LOVE1234")
+  if (cleanDb.endsWith(cleanInput) || cleanInput.endsWith(cleanDb)) return true;
+  if (strippedDb.endsWith(strippedInput) || strippedInput.endsWith(strippedDb)) return true;
+  
+  return false;
 }
 
 // 1.5 Simplified Room Creation (Multi-device friendly & accounts compatible)
@@ -475,7 +487,9 @@ app.post("/api/simple/auth", (req, res) => {
   }
 
   if (!couple) {
-    return res.status(404).json({ error: `ไม่พบห้องคู่รักที่ตั้งรหัสผ่าน/รหัสห้อง "${normalizedCode}" ในระบบเลยค่ะ กรุณาตรวจสอบรหัสอีกครั้งนะคะ` });
+    return res.status(404).json({ 
+      error: `ไม่พบห้องคู่รักที่ตั้งรหัสผ่าน/รหัสห้อง "${normalizedCode}" ในระบบเลยค่ะ\n\n💡 คำแนะนำ: หากคุณเพิ่งสร้างห้องรักในคอมพิวเตอร์ผ่านหน้าพรีวิวแก้ไขของนักพัฒนา (Dev URL) ข้อมูลจะไม่ลิงก์กับบนมือถือนะคะ กรุณาเข้าใช้งานผ่านลิงก์ Shared App URL ตัวเดียวกันทั้งบนคอมพิวเตอร์และมือถือค่ะ 💕` 
+    });
   }
 
   const nameInputClean = getSimplifiedName(yourName);

@@ -9,6 +9,8 @@ interface AnniversarySectionProps {
   userName: string;
   partnerName: string;
   events?: CalendarEvent[];
+  pairingCode?: string;
+  isPartnerConnected?: boolean;
 }
 
 export default function AnniversarySection({
@@ -18,8 +20,18 @@ export default function AnniversarySection({
   userName,
   partnerName,
   events = [],
+  pairingCode,
+  isPartnerConnected = false,
 }: AnniversarySectionProps) {
   const [isEditing, setIsEditing] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  
+  const handleCopyCode = () => {
+    if (!pairingCode) return;
+    navigator.clipboard.writeText(pairingCode);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
   const [editAnniversary, setEditAnniversary] = useState(info.anniversaryDate);
   const [editUserNickname, setEditUserNickname] = useState(info.userNickname);
   const [editPartnerNickname, setEditPartnerNickname] = useState(info.partnerNickname);
@@ -216,6 +228,38 @@ export default function AnniversarySection({
 
   return (
     <div className="space-y-6">
+      {/* Prominent Invite Banner shown when partner has not connected yet */}
+      {!isPartnerConnected && pairingCode && (
+        <div id="share-room-code-banner" className="kawaii-card p-4.5 bg-gradient-to-r from-pink-50 to-rose-100 border border-pink-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 animate-pulse">
+          <div className="flex items-center gap-3 text-left">
+            <span className="text-3xl">🎁</span>
+            <div>
+              <p className="text-xs font-black text-rose-800 flex items-center gap-1.5">
+                <span>เชื่อมต่อห้องคู่รักกับแฟนของคุณ</span>
+                <span className="animate-bounce">💕</span>
+              </p>
+              <p className="text-[11px] text-rose-600 font-bold mt-1">
+                ส่งรหัสห้องรักให้แฟนของคุณ เพื่อเข้าใช้งานและส่งข้อความบอกความในใจ บันทึกภาพแชร์ความจำร่วมกันแบบเรียลไทม์ได้ทันทีค่ะ!
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2.5 bg-white px-3.5 py-2 rounded-2xl border border-rose-200 shadow-2xs shrink-0 w-full sm:w-auto justify-between sm:justify-start">
+            <div className="text-left">
+              <span className="text-[9px] font-black text-gray-400 block uppercase">รหัสห้องคู่รักของคุณ</span>
+              <span className="text-sm font-black text-rose-500 font-mono tracking-wider">{pairingCode}</span>
+            </div>
+            <button
+              onClick={handleCopyCode}
+              className={`px-3.5 py-1.5 font-black text-[10px] rounded-xl cursor-pointer transition-colors ${
+                copiedCode ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white hover:bg-rose-600'
+              }`}
+            >
+              {copiedCode ? 'คัดลอกแล้ว! ✅' : 'คัดลอกรหัส 📋'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Dynamic Love Stats Card */}
       <div id="anniversary-main-card" className="kawaii-card p-6 md:p-8 bg-gradient-to-br from-[#FFF9F5] to-[#F5F1EE] relative overflow-hidden">
         {/* Decorative elements */}
