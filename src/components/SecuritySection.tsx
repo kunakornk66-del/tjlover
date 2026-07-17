@@ -195,7 +195,7 @@ export default function SecuritySection({
       try {
         const json = JSON.parse(event.target?.result as string);
         if (!json.encrypted || !json.data) {
-          alert('รูปแบบไฟล์สำรองข้อมูลไม่ถูกต้องหรือไม่ถูกเข้ารหัส!');
+          onTriggerNotification('⚠️ รูปแบบไฟล์สำรองข้อมูลไม่ถูกต้องหรือไม่ถูกเข้ารหัสค่ะ!');
           return;
         }
 
@@ -221,10 +221,10 @@ export default function SecuritySection({
 
           onTriggerNotification('🎉 นำเข้าและกู้คืนความทรงจำแสนหวานทั้งหมดเสร็จสมบูรณ์แล้วจ้า!');
         } else {
-          alert('ไม่พบคลังข้อมูลคู่รักในไฟล์นี้!');
+          onTriggerNotification('⚠️ ไม่พบคลังข้อมูลคู่รักในไฟล์นี้ค่ะ!');
         }
       } catch (err) {
-        alert('เกิดข้อผิดพลาดในการถอดรหัสไฟล์: รูปแบบไฟล์ผิดพลาด หรือไฟล์เสียหาย!');
+        onTriggerNotification('⚠️ เกิดข้อผิดพลาดในการถอดรหัสไฟล์: รูปแบบไฟล์ผิดพลาด หรือไฟล์เสียหายค่ะ!');
       }
     };
     reader.readAsText(file);
@@ -277,7 +277,7 @@ export default function SecuritySection({
       await onUpdatePartnerEmail(partnerEmailInput);
       onTriggerNotification('💖 ตั้งค่าเพิ่มคู่รักเข้าสู่ระบบสำเร็จแล้วค่ะ แฟนของคุณสามารถเข้าร่วมด้วยเมลนี้!');
     } catch (error) {
-      alert('เกิดข้อผิดพลาดในการตั้งค่าเมลคู่รัก');
+      onTriggerNotification('⚠️ เกิดข้อผิดพลาดในการตั้งค่าเมลคู่รักค่ะ');
     } finally {
       setIsUpdatingPartner(false);
     }
@@ -288,7 +288,7 @@ export default function SecuritySection({
       await onResetFactory();
       onTriggerNotification('🚨 ล้างข้อมูลและรีเซ็ตระบบทั้งหมดกลับเป็นค่าเริ่มต้นโรงงานสำเร็จแล้วค่ะ');
     } catch (e) {
-      alert('เกิดข้อผิดพลาดในการรีเซ็ตระบบ');
+      onTriggerNotification('⚠️ เกิดข้อผิดพลาดในการรีเซ็ตระบบค่ะ');
     }
   };
 

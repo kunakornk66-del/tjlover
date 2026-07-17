@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar as CalendarIcon, Heart, Sparkles, Plus, Trash2, Tag, Gift, Award, Clock, BookOpen, Save, X, Edit3 } from 'lucide-react';
 import { CalendarEvent, Memory } from '../types';
+import ConfirmModal from './ConfirmModal';
 
 interface CalendarSectionProps {
   events: CalendarEvent[];
@@ -44,11 +45,33 @@ export default function CalendarSection({
   const [isEditingDiary, setIsEditingDiary] = useState(false);
   const [diaryText, setDiaryText] = useState('');
 
+  // Confirm Modal state
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
+  // 1. Reset edit state and update text when selectedDateStr changes
   useEffect(() => {
     const existing = events.find((e) => e.date === selectedDateStr && e.category === 'diary');
     setDiaryText(existing?.notes || '');
     setIsEditingDiary(false);
-  }, [selectedDateStr, events]);
+  }, [selectedDateStr]);
+
+  // 2. Only update text from background polling when the user is NOT editing
+  useEffect(() => {
+    if (!isEditingDiary) {
+      const existing = events.find((e) => e.date === selectedDateStr && e.category === 'diary');
+      setDiaryText(existing?.notes || '');
+    }
+  }, [events, selectedDateStr, isEditingDiary]);
 
   const handleSaveDiary = (e: React.FormEvent) => {
     e.preventDefault();
@@ -436,9 +459,15 @@ export default function CalendarSection({
                         <button
                           type="button"
                           onClick={() => {
-                            if (confirm('คุณแน่ใจว่าต้องการลบบันทึกไดอารี่ของวันนี้ใช่ไหมคะ? 🥺')) {
-                              onDeleteEvent(existing.id);
-                            }
+                            setConfirmModal({
+                              isOpen: true,
+                              title: 'ต้องการลบบันทึกไดอารี่ใช่ไหมคะ? 🥺',
+                              message: 'เมื่อลบแล้ว ข้อความบันทึกความในใจแสนหวานของวันนี้จะหายไปถาวรเลยน้าาา',
+                              onConfirm: () => {
+                                onDeleteEvent(existing.id);
+                                setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                              }
+                            });
                           }}
                           className="px-2 py-1 border border-red-200 text-red-500 bg-white hover:bg-red-50 rounded-md font-bold cursor-pointer transition-colors"
                         >
@@ -500,7 +529,17 @@ export default function CalendarSection({
                     </p>
                   </div>
                   <button
-                    onClick={() => onDeleteEvent(ev.id)}
+                    onClick={() => {
+                      setConfirmModal({
+                        isOpen: true,
+                        title: 'ลบกิจกรรมนี้ใช่ไหมคะ? 🥺',
+                        message: `คุณแน่ใจว่าต้องการลบกิจกรรม "${ev.title}" ออกจากปฏิทินสองเราใช่ไหมคะ?`,
+                        onConfirm: () => {
+                          onDeleteEvent(ev.id);
+                          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                        }
+                      });
+                    }}
                     className="p-1 text-[#A89090] hover:text-[#FF8E8E] rounded-full hover:bg-[#FFEFEF] transition-colors cursor-pointer self-start"
                     title="ลบกิจกรรม"
                   >
@@ -611,6 +650,15 @@ export default function CalendarSection({
           </form>
         </div>
       </div>
+      
+      {/* Kawaii Custom Confirmation Dialog */}
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

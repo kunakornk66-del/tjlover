@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Camera, Video, FileText, Heart, Plus, Trash2, Image as ImageIcon, Sparkles, Pencil, X, ChevronLeft, ChevronRight, Eye, FolderHeart, BookOpen, Save, FileEdit, Download } from 'lucide-react';
 import { Memory } from '../types';
+import ConfirmModal from './ConfirmModal';
 
 interface MemoryBoxSectionProps {
   memories: Memory[];
@@ -46,6 +47,19 @@ export default function MemoryBoxSection({
 
   // Lucky Random Memory state
   const [luckyMemory, setLuckyMemory] = useState<Memory | null>(null);
+
+  // Custom Kawaii Confirm Modal state
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   // Compress helper to resize high-res user photos before storing
   const handleFileChangeHelper = async (files: FileList | null): Promise<string[]> => {
@@ -428,9 +442,15 @@ export default function MemoryBoxSection({
                             <button
                               id={`btn-delete-direct-video-${album.id}`}
                               onClick={() => {
-                                if (confirm('คุณต้องการลบไฟล์วิดีโอนี้ใช่ไหมคะ? 🥺')) {
-                                  onDeleteMemory(album.id);
-                                }
+                                setConfirmModal({
+                                  isOpen: true,
+                                  title: 'ลบวิดีโอนี้ใช่ไหมคะ? 🥺',
+                                  message: 'เมื่อลบแล้ว วิดีโอช่วงเวลาหวานๆ อันนี้จะหายไปจากคลังรักเลยน้าาา',
+                                  onConfirm: () => {
+                                    onDeleteMemory(album.id);
+                                    setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                                  }
+                                });
                               }}
                               className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors cursor-pointer"
                               title="ลบวิดีโอนี้"
@@ -497,9 +517,15 @@ export default function MemoryBoxSection({
                             id={`btn-delete-album-${album.id}`}
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (confirm('คุณต้องการลบอัลบั้มนี้พร้อมข้อมูลรูปภาพทั้งหมดใช่ไหมคะ? 🥺')) {
-                                onDeleteMemory(album.id);
-                              }
+                              setConfirmModal({
+                                isOpen: true,
+                                title: 'ลบอัลบั้มรักนี้ใช่ไหมคะ? 🥺',
+                                message: `คุณแน่ใจว่าต้องการลบอัลบั้ม "${album.title}" พร้อมทั้งรูปภาพแสนรักทั้งหมดในอัลบั้มนี้ใช่ไหมคะ?`,
+                                onConfirm: () => {
+                                  onDeleteMemory(album.id);
+                                  setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                                }
+                              });
                             }}
                             className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors cursor-pointer"
                             title="ลบอัลบั้มนี้"
@@ -633,9 +659,15 @@ export default function MemoryBoxSection({
                               id={`btn-delete-media-${idx}`}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (confirm('ต้องการลบไฟล์นี้ออกจากอัลบั้มรักใช่ไหมคะ? 🥺')) {
-                                  handleDeleteMediaFromAlbum(album, idx);
-                                }
+                                setConfirmModal({
+                                  isOpen: true,
+                                  title: 'ลบไฟล์นี้ออกจากอัลบั้มใช่ไหมคะ? 🥺',
+                                  message: 'รูปภาพ/วิดีโอนี้จะถูกลบออกจากอัลบั้มความทรงจำฉบับนี้ไปอย่างถาวรเลยจ้า',
+                                  onConfirm: () => {
+                                    handleDeleteMediaFromAlbum(album, idx);
+                                    setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                                  }
+                                });
                               }}
                               className="p-2 bg-red-500 text-white rounded-full hover:bg-red-600 shadow-md transition-colors cursor-pointer"
                               title="ลบไฟล์นี้"
@@ -726,14 +758,20 @@ export default function MemoryBoxSection({
                           id={`btn-delete-note-${note.id}`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (confirm('คุณต้องการลบโน้ตรักฉบับนี้ใช่ไหมคะ? 🥺')) {
-                              onDeleteMemory(note.id);
-                              if (activeNoteId === note.id) {
-                                setActiveNoteId(null);
-                                setNoteTitleInput('');
-                                setNoteContentInput('');
+                            setConfirmModal({
+                              isOpen: true,
+                              title: 'ลบโน้ตรักฉบับนี้ใช่ไหมคะ? 🥺',
+                              message: `คุณต้องการลบโน้ตเรื่อง "${note.title}" ฉบับนี้ใช่ไหมคะ? ข้อมูลเนื้อหาจะกู้กลับไม่ได้แล้วน้า`,
+                              onConfirm: () => {
+                                onDeleteMemory(note.id);
+                                if (activeNoteId === note.id) {
+                                  setActiveNoteId(null);
+                                  setNoteTitleInput('');
+                                  setNoteContentInput('');
+                                }
+                                setConfirmModal(prev => ({ ...prev, isOpen: false }));
                               }
-                            }
+                            });
                           }}
                           className="text-gray-300 hover:text-red-500 p-0.5 rounded-full hover:bg-red-50 transition-colors"
                           title="ลบโน้ตนี้"
@@ -1087,6 +1125,15 @@ export default function MemoryBoxSection({
           );
         })()
       )}
+      
+      {/* Kawaii Custom Confirmation Dialog */}
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }
