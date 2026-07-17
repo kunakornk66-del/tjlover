@@ -770,18 +770,17 @@ export async function appFetch(url: string, options?: RequestInit): Promise<Resp
 
   try {
     const res = await window.fetch(url, options);
-    const isHtmlResponse = res.headers.get('content-type')?.includes('text/html');
+    const contentType = res.headers.get('content-type') || '';
+    const isHtmlResponse = contentType.includes('text/html');
     
-    // Auth routes fallback to local emulator if the server is offline or fails
-    if (isAuthRoute) {
-      if (isHtmlResponse || res.status === 404 || res.status >= 500) {
-        addDiagnosticLog('system', `เซิร์ฟเวอร์ตอบกลับไม่สมบูรณ์สำหรับเส้นทางสิทธิ์ (${url}) สลับเข้าโหมดจำลองในเครื่อง`);
-        return await handleLocalFallback(url, options);
-      }
-    } else if (res.status === 404 || isHtmlResponse) {
-      addDiagnosticLog('system', `ไม่พบจุดเชื่อมต่อเซิร์ฟเวอร์สำหรับ ${url} สลับเข้าโหมดจำลองในเครื่อง`);
+    // Only fall back to local emulator if the server returned HTML (which means Vite served index.html instead of Express API)
+    if (isHtmlResponse) {
+      addDiagnosticLog('system', `เซิร์ฟเวอร์ตอบกลับเป็น HTML (ไม่ใช่ JSON) สำหรับ ${url} สลับเข้าโหมดจำลองในเครื่อง`);
       return await handleLocalFallback(url, options);
     }
+
+    // Otherwise, the server is running and returned a real JSON or text response.
+    // Do NOT fall back on 404 or 500 if it is a real API response!
 
     // Log live response
     try {
