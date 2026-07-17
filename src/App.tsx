@@ -81,7 +81,7 @@ export default function App() {
   const [signUpPassword, setSignUpPassword] = useState('');
   const [authMessage, setAuthMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  const [isOfflineMode, setIsOfflineMode] = useState(getLocalOnlyMode());
+  const [isOfflineMode, setIsOfflineMode] = useState(false);
 
   // Simple quick/unified login mode states
   const [simpleMode, setSimpleMode] = useState<'create' | 'join'>('create');
@@ -1197,34 +1197,6 @@ export default function App() {
               </p>
             </div>
 
-            {/* Offline vs Online Mode Quick Switch */}
-            <div className="p-4 bg-rose-50/70 border border-rose-100 rounded-2xl text-xs space-y-2.5 text-left">
-              <div className="flex items-center justify-between">
-                <span className="font-extrabold text-[#5D4E4E] flex items-center gap-1.5">
-                  📱 โหมดการทำงานระบบ:
-                </span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                  isOfflineMode 
-                    ? 'bg-amber-100 text-amber-800 border border-amber-200' 
-                    : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                }`}>
-                  {isOfflineMode ? '🔒 ออฟไลน์ส่วนตัว 100%' : '☁️ ออนไลน์ซิงค์คลาวด์'}
-                </span>
-              </div>
-              <p className="text-[#A89090] text-[10.5px] leading-relaxed font-medium">
-                {isOfflineMode 
-                  ? 'เซฟข้อมูลในโทรศัพท์เครื่องนี้ ปลอดภัยและเสถียรที่สุด 100% ไม่ต้องเชื่อมต่อเครือข่ายเซิร์ฟเวอร์ หมดกังวลเรื่องเน็ตมือถือบล็อกค่ะ!' 
-                  : 'เชื่อมต่อและแชร์ข้อมูลเรียลไทม์ระหว่าง 2 เครื่อง ใช้รหัสห้องคู่รักเดียวกันเพื่อแชร์ความทรงจำร่วมกันได้เลยค่ะ'}
-              </p>
-              <button
-                type="button"
-                onClick={() => handleToggleOfflineMode(!isOfflineMode)}
-                className="w-full py-2 bg-white hover:bg-rose-100/30 text-[#FF8E8E] border border-[#FF8E8E]/30 font-black rounded-xl text-xs transition-all cursor-pointer active:scale-95 shadow-2xs"
-              >
-                🔄 สลับเป็น{isOfflineMode ? 'โหมดออนไลน์ซิงค์คลาวด์' : 'โหมดส่วนตัวออฟไลน์ 100%'}
-              </button>
-            </div>
-
             {/* Main Tabs */}
             <div className="grid grid-cols-2 p-1 bg-gray-100 rounded-2xl border border-gray-200 gap-1">
               <button
@@ -1319,15 +1291,16 @@ export default function App() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[11px] font-black text-gray-500 mb-1">
-                        🔑 ตั้งรหัสห้องคู่รัก 4 หลัก:
+                        🔑 ตั้งรหัสผ่านห้องคู่รัก: <span className="text-rose-400">*</span>
                       </label>
                       <input
                         type="text"
-                        maxLength={4}
+                        maxLength={16}
                         value={simpleRoomCode}
                         onChange={(e) => setSimpleRoomCode(e.target.value.replace(/[^a-zA-Z0-9]/g, ''))}
-                        placeholder="1234"
+                        placeholder="ตั้งรหัสผ่านห้อง เช่น 1234"
                         className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] focus:ring-1 focus:ring-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E] font-bold text-center uppercase"
+                        required
                       />
                     </div>
                     <div>
@@ -1349,7 +1322,7 @@ export default function App() {
                   disabled={isLoggingIn}
                   className="w-full py-3.5 bg-linear-to-r from-rose-400 to-pink-500 hover:from-rose-500 hover:to-pink-600 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all active:scale-[0.98]"
                 >
-                  {isLoggingIn ? '💖 กำลังเตรียมห้องหัวใจ...' : 'สร้างห้องรักและเข้าใช้งานทันที ✨'}
+                  {isLoggingIn ? '💖 กำลังเตรียมห้องรัก...' : 'สร้างห้องรักและเข้าใช้งานทันที ✨'}
                 </button>
               </form>
             ) : (
@@ -1362,7 +1335,7 @@ export default function App() {
                     return;
                   }
                   if (!simpleRoomCode.trim()) {
-                    setAuthMessage({ text: 'กรุณากรอกรหัสห้องของแฟนคุณด้วยนะคะ', type: 'error' });
+                    setAuthMessage({ text: 'กรุณากรอกรหัสผ่านห้องของสองเราด้วยนะคะ', type: 'error' });
                     return;
                   }
                   handleJoinSimpleSpace(simpleYourName, simpleRoomCode);
@@ -1386,14 +1359,14 @@ export default function App() {
 
                   <div>
                     <label className="block text-[11px] font-black text-gray-500 mb-1">
-                      🔑 รหัสห้องคู่รัก (4 หลัก หรือ LOVE-XXXX): <span className="text-rose-400">*</span>
+                      🔑 รหัสผ่านห้องคู่รัก: <span className="text-rose-400">*</span>
                     </label>
                     <input
                       type="text"
-                      maxLength={9}
+                      maxLength={16}
                       value={simpleRoomCode}
                       onChange={(e) => setSimpleRoomCode(e.target.value.replace(/[^a-zA-Z0-9-]/g, ''))}
-                      placeholder="รหัสห้อง 4 หลัก หรือ LOVE-XXXX"
+                      placeholder="กรอกรหัสผ่านห้องคู่รัก เช่น 1234"
                       className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] focus:ring-1 focus:ring-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E] font-bold text-center uppercase"
                       required
                     />
@@ -1410,57 +1383,7 @@ export default function App() {
               </form>
             )}
 
-            <div className="relative flex items-center justify-center">
-              <div className="absolute w-full border-t border-[#F0E6DD]"></div>
-              <span className="relative bg-white px-3 text-[10px] font-bold text-[#A89090] uppercase tracking-widest">
-                หรือ ทดลองใช้งานด่วน
-              </span>
-            </div>
 
-            {/* Instant Demo Account login */}
-            <div className="space-y-4">
-              <button
-                type="button"
-                onClick={async () => {
-                  setAuthMessage(null);
-                  setIsLoggingIn(true);
-                  try {
-                    const defaultHash = await computeHash('password123');
-                    await appFetch('/api/auth/register-username', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ username: 'couple_demo', passwordHash: defaultHash }),
-                    });
-                    
-                    const response = await appFetch('/api/auth/login-username', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ username: 'couple_demo', passwordHash: defaultHash }),
-                    });
-
-                    if (response.ok) {
-                      const data = await response.json();
-                      setCurrentUser(data.user);
-                      localStorage.setItem('couple_user', JSON.stringify(data.user));
-                      if (data.couple) {
-                        setCurrentCouple(data.couple);
-                        setRelationshipInfo(data.couple.relationshipInfo);
-                        fetchCoupleData(data.couple.id);
-                      }
-                      triggerNotification('🦊 เข้าสู่ระบบทดลองเรียบร้อยแล้วค่ะ!', 'info');
-                    }
-                  } catch (e) {
-                    console.error(e);
-                  } finally {
-                    setIsLoggingIn(false);
-                  }
-                }}
-                disabled={isLoggingIn}
-                className="w-full py-2.5 bg-gray-50 hover:bg-gray-100 text-[#5D4E4E] border border-[#F0E6DD] font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-[0.98]"
-              >
-                เข้าชมตัวอย่างแอป (couple_demo) 🦊
-              </button>
-            </div>
           </motion.div>
         </div>
 
