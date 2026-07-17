@@ -364,9 +364,21 @@ function getSimplifiedName(name: string): string {
     .trim();
 }
 
-// 1.5 Simplified Room Creation (No email required)
+// Robust helper to check if two room codes are equivalent (ignoring dashes and "LOVE-" prefix)
+function matchRoomCode(dbCode: string, inputCode: string): boolean {
+  if (!dbCode || !inputCode) return false;
+  const cleanDb = dbCode.toUpperCase().replace(/[^A-Z0-9]/g, "").trim();
+  const cleanInput = inputCode.toUpperCase().replace(/[^A-Z0-9]/g, "").trim();
+  
+  if (cleanDb === cleanInput) return true;
+  
+  const stripLove = (s: string) => s.startsWith("LOVE") ? s.substring(4) : s;
+  return stripLove(cleanDb) === stripLove(cleanInput);
+}
+
+// 1.5 Simplified Room Creation (Multi-device friendly & accounts compatible)
 app.post("/api/simple/create", (req, res) => {
-  const { yourName, partnerName, roomCode, anniversaryDate } = req.body;
+  const { email, yourName, partnerName, partnerEmail: inputPartnerEmail, roomCode, anniversaryDate } = req.body;
   if (!yourName || !roomCode) {
     return res.status(400).json({ error: "กรุณากรอกชื่อเล่นของคุณและรหัสห้องคู่รักด้วยค่ะ" });
   }
@@ -376,27 +388,48 @@ app.post("/api/simple/create", (req, res) => {
 
   // Check if room code already exists in db.couples
   const existingCouple = Object.values(db.couples).find(
-    (c) => (c.pairingCode || "").toUpperCase().trim() === normalizedCode
+    (c) => matchRoomCode(c.pairingCode, normalizedCode)
   );
   if (existingCouple) {
     return res.status(400).json({ error: "รหัสห้องคู่รักนี้ถูกใช้งานแล้วค่ะ กรุณาตั้งรหัสใหม่อื่นๆ นะคะ" });
   }
 
   const coupleId = `couple-${normalizedCode}`;
-  const ownerEmail = `owner-${normalizedCode}@couple.com`;
-  const partnerEmail = `partner-${normalizedCode}@couple.com`;
+  
+  // Decide owner details: check if there's a logged-in user email provided
+  const resolvedOwnerEmail = email ? email.toLowerCase().trim() : `owner-${normalizedCode}@couple.com`;
+  let ownerUser = db.users[resolvedOwnerEmail];
+  
+  if (ownerUser) {
+    // Update existing user's couple ID
+    ownerUser.coupleId = coupleId;
+    if (yourName) ownerUser.name = yourName.trim();
+  } else {
+    // Create mock owner user if not exists
+    ownerUser = {
+      email: resolvedOwnerEmail,
+      name: yourName.trim(),
+      coupleId: coupleId,
+      picture: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150"
+    };
+  }
+  db.users[resolvedOwnerEmail] = ownerUser;
 
-  const ownerUser: User = {
-    email: ownerEmail,
-    name: yourName.trim(),
-    coupleId: coupleId,
-    picture: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150"
-  };
+  // Resolve partner's email: either from input, or mock email
+  let resolvedPartnerEmail = inputPartnerEmail ? inputPartnerEmail.toLowerCase().trim() : `partner-${normalizedCode}@couple.com`;
+  
+  // Check if partner user exists in DB by email or username
+  const partnerUser = findUserInDB(db, resolvedPartnerEmail);
+  if (partnerUser) {
+    partnerUser.coupleId = coupleId;
+    resolvedPartnerEmail = partnerUser.email.toLowerCase().trim();
+    db.users[resolvedPartnerEmail] = partnerUser;
+  }
 
   const couple: Couple = {
     id: coupleId,
-    ownerEmail: ownerEmail,
-    partnerEmail: partnerEmail,
+    ownerEmail: resolvedOwnerEmail,
+    partnerEmail: resolvedPartnerEmail,
     pairingCode: normalizedCode,
     relationshipInfo: {
       anniversaryDate: anniversaryDate || new Date().toISOString().split("T")[0],
@@ -412,16 +445,15 @@ app.post("/api/simple/create", (req, res) => {
     moodLogs: []
   };
 
-  db.users[ownerEmail] = ownerUser;
   db.couples[coupleId] = couple;
 
   saveDB(db);
   res.json({ user: ownerUser, couple });
 });
 
-// 1.6 Simplified Room Auth / Join (Multi-device friendly)
+// 1.6 Simplified Room Auth / Join (Multi-device friendly & accounts compatible)
 app.post("/api/simple/auth", (req, res) => {
-  const { yourName, roomCode } = req.body;
+  const { email, yourName, roomCode } = req.body;
   if (!yourName || !roomCode) {
     return res.status(400).json({ error: "กรุณาระบุชื่อเล่นและรหัสห้องคู่รักเพื่อเข้าใช้งานค่ะ" });
   }
@@ -430,9 +462,17 @@ app.post("/api/simple/auth", (req, res) => {
   const normalizedCode = roomCode.toUpperCase().replace(/\s+/g, "").trim();
 
   // Find the couple room
-  const couple = Object.values(db.couples).find(
-    (c) => (c.pairingCode || "").toUpperCase().trim() === normalizedCode
+  let couple = Object.values(db.couples).find(
+    (c) => matchRoomCode(c.pairingCode, normalizedCode)
   );
+
+  // If not found by pairing code directly, search by partner's username/email
+  if (!couple) {
+    const partnerUser = findUserInDB(db, roomCode);
+    if (partnerUser && partnerUser.coupleId && db.couples[partnerUser.coupleId]) {
+      couple = db.couples[partnerUser.coupleId];
+    }
+  }
 
   if (!couple) {
     return res.status(404).json({ error: `ไม่พบห้องคู่รักที่ตั้งรหัสผ่าน/รหัสห้อง "${normalizedCode}" ในระบบเลยค่ะ กรุณาตรวจสอบรหัสอีกครั้งนะคะ` });
@@ -442,47 +482,62 @@ app.post("/api/simple/auth", (req, res) => {
   const ownerNameClean = getSimplifiedName(couple.relationshipInfo.userNickname);
   const partnerNameClean = getSimplifiedName(couple.relationshipInfo.partnerNickname);
 
+  const userEmailClean = email ? email.toLowerCase().trim() : "";
+  const ownerEmailClean = couple.ownerEmail.toLowerCase().trim();
+  const partnerEmailClean = couple.partnerEmail ? couple.partnerEmail.toLowerCase().trim() : "";
+
   let isOwner = false;
-  if (nameInputClean === ownerNameClean) {
-    isOwner = true;
-  } else if (nameInputClean !== partnerNameClean && partnerNameClean !== "" && partnerNameClean !== "คุณแฟน" && partnerNameClean !== "คุณแฟน🐰") {
-    // If it doesn't match partner name either, treat as partner by default or if owner name is different
-    isOwner = false;
+  if (userEmailClean) {
+    if (userEmailClean === ownerEmailClean) {
+      isOwner = true;
+    } else if (userEmailClean === partnerEmailClean) {
+      isOwner = false;
+    } else {
+      isOwner = (nameInputClean === ownerNameClean);
+    }
+  } else {
+    if (nameInputClean === ownerNameClean) {
+      isOwner = true;
+    } else if (nameInputClean !== partnerNameClean && partnerNameClean !== "" && partnerNameClean !== "คุณแฟน" && partnerNameClean !== "คุณแฟน🐰") {
+      isOwner = false;
+    }
   }
 
   let loggedUser: User;
   if (isOwner) {
-    const ownerEmail = couple.ownerEmail || `owner-${normalizedCode}@couple.com`;
-    let user = db.users[ownerEmail];
+    const resolvedOwnerEmail = userEmailClean || couple.ownerEmail || `owner-${normalizedCode}@couple.com`;
+    let user = db.users[resolvedOwnerEmail];
     if (!user) {
       user = {
-        email: ownerEmail,
+        email: resolvedOwnerEmail,
         name: yourName.trim(),
         coupleId: couple.id,
         picture: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150"
       };
-      db.users[ownerEmail] = user;
     } else {
       user.name = yourName.trim();
+      user.coupleId = couple.id;
     }
+    db.users[resolvedOwnerEmail] = user;
+    couple.ownerEmail = resolvedOwnerEmail;
     loggedUser = user;
   } else {
-    const partnerEmail = couple.partnerEmail || `partner-${normalizedCode}@couple.com`;
-    let user = db.users[partnerEmail];
+    const resolvedPartnerEmail = userEmailClean || couple.partnerEmail || `partner-${normalizedCode}@couple.com`;
+    let user = db.users[resolvedPartnerEmail];
     if (!user) {
       user = {
-        email: partnerEmail,
+        email: resolvedPartnerEmail,
         name: yourName.trim(),
         coupleId: couple.id,
         picture: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150"
       };
-      db.users[partnerEmail] = user;
     } else {
       user.name = yourName.trim();
+      user.coupleId = couple.id;
     }
+    db.users[resolvedPartnerEmail] = user;
 
-    // Update partner email and nickname in the couple space as well
-    couple.partnerEmail = partnerEmail;
+    couple.partnerEmail = resolvedPartnerEmail;
     if (!couple.relationshipInfo.partnerNickname || couple.relationshipInfo.partnerNickname === "คุณแฟน 🐰") {
       couple.relationshipInfo.partnerNickname = yourName.trim();
     }
@@ -598,7 +653,7 @@ app.post("/api/couple/join", (req, res) => {
   }
 
   // 1. Try to find the couple by pairing code first
-  let couple = Object.values(db.couples).find((c) => (c.pairingCode || "").toUpperCase().trim() === cleanedCode);
+  let couple = Object.values(db.couples).find((c) => matchRoomCode(c.pairingCode, cleanedCode));
 
   // 2. If not found, try to search pairingCode as a Username or Email of the partner
   if (!couple) {

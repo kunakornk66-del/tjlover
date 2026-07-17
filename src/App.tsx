@@ -393,9 +393,11 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          yourName: currentUser.name,
-          partnerName: 'คุณแฟน 🐰',
-          roomCode: pairingCodeInput || 'LOVE-' + Math.random().toString(36).substring(2, 6).toUpperCase(),
+          email: currentUser.email,
+          yourName: userNicknameInput.trim() || currentUser.name,
+          partnerName: partnerNicknameInput.trim() || 'คุณแฟน 🐰',
+          partnerEmail: partnerEmail.trim(),
+          roomCode: pairingCodeInput.trim() || 'LOVE-' + Math.random().toString(36).substring(2, 6).toUpperCase(),
           anniversaryDate
         })
       });
@@ -430,6 +432,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          email: currentUser.email,
           yourName: currentUser.name,
           roomCode: pairingCode.trim()
         })
