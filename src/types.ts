@@ -1,60 +1,78 @@
-export interface User {
-  id: string;
-  email: string;
+export interface Profile {
+  id: 'user' | 'partner';
   name: string;
-  partnerId?: string;
-  coupleId?: string;
-  avatar?: string;
-  customStatus?: string;
-}
-
-export interface Couple {
-  id: string;
-  partner1Id: string;
-  partner2Id: string;
-  anniversaryDate?: string; // ISO date string YYYY-MM-DD
-  themeColor?: string; // Tailwind color class or hex
-}
-
-export interface ChatMessage {
-  id: string;
-  coupleId: string;
-  senderId: string;
-  senderName: string;
-  text: string;
-  images?: string[]; // base64 images
-  createdAt: string; // ISO string
+  avatarUrl: string;
+  color: string;
+  emoji: string;
 }
 
 export interface Memory {
   id: string;
-  coupleId: string;
   title: string;
+  type: 'photo_album' | 'video_album' | 'video' | 'note';
   content: string;
-  date: string; // YYYY-MM-DD
-  images: string[]; // base64 images
-  createdBy: string;
-  creatorName: string;
-  createdAt: string;
-  likes: string[]; // array of user IDs who liked
-  comments: Comment[];
-  category?: string; // Optional album or category category
+  mediaUrl?: string;
+  mediaUrls?: string[];
+  date: string;
+  creatorId: 'user' | 'partner';
 }
 
-export interface Comment {
+export interface ChatMessage {
   id: string;
-  userId: string;
-  userName: string;
+  senderId: 'user' | 'partner';
   text: string;
-  createdAt: string;
+  timestamp: string;
+  isEncrypted: boolean;
+  mediaUrl?: string;
+  mediaType?: 'photo' | 'video' | 'sticker';
+  seen?: boolean;
 }
 
 export interface CalendarEvent {
   id: string;
-  coupleId: string;
   title: string;
-  date: string; // YYYY-MM-DD
-  description?: string;
-  category: 'anniversary' | 'date' | 'milestone' | 'general';
-  createdBy: string;
+  date: string;
+  category: 'anniversary' | 'date' | 'special' | 'diary' | 'other';
+  notes?: string;
+  creatorId: 'user' | 'partner';
 }
+
+export interface MoodLog {
+  date: string; // YYYY-MM-DD
+  userMood?: string; // emoji or mood key
+  partnerMood?: string; // emoji or mood key
+  userNote?: string;
+  partnerNote?: string;
+}
+
+export interface RelationshipInfo {
+  anniversaryDate: string; // YYYY-MM-DD
+  userNickname: string;
+  partnerNickname: string;
+  loveMessage: string;
+  userAvatar?: string;
+  partnerAvatar?: string;
+}
+
+export interface CurrentUser {
+  email: string;
+  name: string;
+  picture?: string;
+  coupleId?: string;
+  username?: string;
+  passwordHash?: string;
+  lastActive?: string;
+}
+
+export interface Couple {
+  id: string;
+  ownerEmail: string;
+  partnerEmail?: string;
+  pairingCode: string;
+  relationshipInfo: RelationshipInfo;
+  memories: Memory[];
+  messages: ChatMessage[];
+  events: CalendarEvent[];
+  moodLogs: MoodLog[];
+}
+

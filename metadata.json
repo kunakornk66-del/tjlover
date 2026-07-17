@@ -1,6 +1,6 @@
 {
-  "name": "Couple Space",
-  "description": "A private web application for couples to share memories, upload photos, chat securely with notifications, and track important anniversaries on a shared calendar.",
-  "requestFramePermissions": [],
+  "name": "Couple Memory Hub",
+  "description": "โปรแกรมบันทึกความทรงจำคู่รัก ปฏิทินแชร์ แจ้งเตือนวันครบรอบ และบันทึกความรู้สึกพร้อมระบบเข้ารหัสความปลอดภัย",
+  "requestFramePermissions": ["camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
