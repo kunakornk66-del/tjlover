@@ -12,6 +12,73 @@ const DB_FILE = path.join(process.cwd(), "couple_db.json");
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
+let cachedDB: DB = { users: {}, couples: {} };
+
+// Initialize cachedDB from disk synchronously on startup
+try {
+  if (fs.existsSync(DB_FILE)) {
+    const fileData = fs.readFileSync(DB_FILE, "utf-8");
+    if (fileData.trim()) {
+      const parsed = JSON.parse(fileData);
+      cachedDB.users = parsed.users || {};
+      cachedDB.couples = parsed.couples || {};
+    }
+  }
+} catch (error) {
+  console.error("Error loading initial database file into memory cache:", error);
+}
+
+// Startup synchronization function to seed Cloud SQL or sync down
+async function startupSync() {
+  try {
+    const userRows = await db.select().from(users);
+    const coupleRows = await db.select().from(couples);
+
+    const cloudUsersCount = userRows.length;
+    const cloudCouplesCount = coupleRows.length;
+    const hasLocalData = Object.keys(cachedDB.users).length > 0 || Object.keys(cachedDB.couples).length > 0;
+
+    if (cloudUsersCount === 0 && cloudCouplesCount === 0 && hasLocalData) {
+      console.log("Cloud SQL tables are empty, but local JSON cache has data. Migrating local data to Cloud SQL...");
+      
+      // Migrate users
+      for (const [email, userData] of Object.entries(cachedDB.users)) {
+        const cleanedEmail = email.toLowerCase().trim();
+        await db.insert(users)
+          .values({ email: cleanedEmail, data: userData })
+          .onConflictDoUpdate({
+            target: users.email,
+            set: { data: userData }
+          });
+      }
+
+      // Migrate couples
+      for (const [id, coupleData] of Object.entries(cachedDB.couples)) {
+        await db.insert(couples)
+          .values({ id, pairingCode: coupleData.pairingCode, data: coupleData })
+          .onConflictDoUpdate({
+            target: couples.id,
+            set: { pairingCode: coupleData.pairingCode, data: coupleData }
+          });
+      }
+      console.log("Local database successfully migrated to Cloud SQL on startup!");
+    } else {
+      console.log(`Cloud SQL has ${cloudUsersCount} users and ${cloudCouplesCount} couples. Syncing to local memory cache...`);
+      const newDB: DB = { users: {}, couples: {} };
+      for (const r of userRows) {
+        newDB.users[r.email.toLowerCase().trim()] = r.data;
+      }
+      for (const r of coupleRows) {
+        newDB.couples[r.id] = r.data as Couple;
+      }
+      cachedDB = newDB;
+      fs.writeFileSync(DB_FILE, JSON.stringify(cachedDB, null, 2), "utf-8");
+    }
+  } catch (error) {
+    console.error("Failed to perform startup database synchronization:", error);
+  }
+}
+
 // Middleware to pull the latest state from Cloud SQL before any API request
 app.use(async (req, res, next) => {
   if (req.path.startsWith("/api/") && req.path !== "/api/auth/migrate-local-db") {
@@ -19,20 +86,29 @@ app.use(async (req, res, next) => {
       const userRows = await db.select().from(users);
       const coupleRows = await db.select().from(couples);
 
-      const dbObj: DB = {
-        users: {},
-        couples: {}
-      };
+      // Safety check: if both tables are empty but our cache has data, skip overwriting
+      if (userRows.length === 0 && coupleRows.length === 0 && (Object.keys(cachedDB.users).length > 0 || Object.keys(cachedDB.couples).length > 0)) {
+        console.warn("Middleware detected empty Cloud SQL but cache has data. Skipping wipe to prevent data loss.");
+      } else {
+        const dbObj: DB = {
+          users: {},
+          couples: {}
+        };
 
-      for (const r of userRows) {
-        dbObj.users[r.email.toLowerCase().trim()] = r.data;
-      }
-      for (const r of coupleRows) {
-        dbObj.couples[r.id] = r.data as Couple;
-      }
+        for (const r of userRows) {
+          dbObj.users[r.email.toLowerCase().trim()] = r.data;
+        }
+        for (const r of coupleRows) {
+          dbObj.couples[r.id] = r.data as Couple;
+        }
 
-      // Synchronously write to the local cache file so loadDB() reads it
-      fs.writeFileSync(DB_FILE, JSON.stringify(dbObj, null, 2), "utf-8");
+        cachedDB = dbObj;
+        
+        // Asynchronously update local file backup
+        fs.writeFile(DB_FILE, JSON.stringify(dbObj, null, 2), "utf-8", (err) => {
+          if (err) console.error("Async middleware backup write failed:", err);
+        });
+      }
     } catch (error) {
       console.error("Middleware failed to sync from Cloud SQL:", error);
     }
@@ -122,31 +198,21 @@ const initialDB: DB = {
   couples: {}
 };
 
-// Database helper functions
+// Database helper functions (In-Memory with Cloud SQL backplane)
 function loadDB(): DB {
-  try {
-    if (fs.existsSync(DB_FILE)) {
-      const data = fs.readFileSync(DB_FILE, "utf-8");
-      if (!data.trim()) {
-        return { users: {}, couples: {} };
-      }
-      const db = JSON.parse(data);
-      if (!db.users) db.users = {};
-      if (!db.couples) db.couples = {};
-      return db;
-    }
-  } catch (error) {
-    console.error("Error reading database file, using fallback:", error);
-  }
-  return { users: {}, couples: {} };
+  return cachedDB;
 }
 
 function saveDB(dbObj: DB) {
   try {
-    // 1. Write to local file first so it's immediate and synchronous
-    fs.writeFileSync(DB_FILE, JSON.stringify(dbObj, null, 2), "utf-8");
+    cachedDB = dbObj;
 
-    // 2. Fire-and-forget save to Cloud SQL in background
+    // Asynchronously write to local backup file
+    fs.writeFile(DB_FILE, JSON.stringify(dbObj, null, 2), "utf-8", (err) => {
+      if (err) console.error("Async write to DB_FILE failed:", err);
+    });
+
+    // Fire-and-forget save to Cloud SQL in background
     (async () => {
       for (const [email, userData] of Object.entries(dbObj.users)) {
         const cleanedEmail = email.toLowerCase().trim();
@@ -171,7 +237,7 @@ function saveDB(dbObj: DB) {
     });
 
   } catch (error) {
-    console.error("Error writing database file:", error);
+    console.error("Error updating database memory cache:", error);
   }
 }
 
@@ -1065,6 +1131,9 @@ app.post("/api/couple/reset", (req, res) => {
 // ------------------- VITE & STATIC FILE SERVING -------------------
 
 async function startServer() {
+  // Wait for database synchronization on boot
+  await startupSync();
+
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },

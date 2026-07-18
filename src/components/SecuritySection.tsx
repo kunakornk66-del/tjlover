@@ -19,13 +19,14 @@ interface SecuritySectionProps {
     moodLogs: MoodLog[];
     relationshipInfo: RelationshipInfo;
   }) => void;
-  onTriggerNotification: (message: string) => void;
+  onTriggerNotification: (message: string, type?: 'info' | 'love' | 'security') => void;
   onLogout: () => void;
   onUpdatePartnerEmail: (partnerEmail: string) => Promise<void>;
   onResetFactory: () => Promise<void>;
   onLinkSpace?: (pairingCode: string) => Promise<void>;
   notificationPermission?: string;
   onRequestNotificationPermission?: () => void;
+  onLockScreen?: () => void;
 }
 
 export default function SecuritySection({
@@ -44,12 +45,59 @@ export default function SecuritySection({
   onLinkSpace,
   notificationPermission = 'default',
   onRequestNotificationPermission = () => {},
+  onLockScreen = () => {},
 }: SecuritySectionProps) {
   const [passphrase, setPassphrase] = useState('LOVEMYPARTNER1314');
   const [logs, setLogs] = useState<DiagnosticLog[]>(() => getDiagnosticLogs());
   const [logFilter, setLogFilter] = useState<'all' | 'error' | 'request' | 'system'>('all');
   const [linkPairingCode, setLinkPairingCode] = useState('');
   const [isLinking, setIsLinking] = useState(false);
+
+  // States for PIN Lock Screen & Security
+  const [pinEnabled, setPinEnabled] = useState(() => localStorage.getItem('couple_app_pin_enabled') === 'true');
+  const [pinCode, setPinCode] = useState(() => localStorage.getItem('couple_app_pin_code') || '');
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [disablePinInput, setDisablePinInput] = useState('');
+  const [showDisableForm, setShowDisableForm] = useState(false);
+
+  const handleSavePin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPin.length !== 4 || !/^\d+$/.test(newPin)) {
+      setPinError('⚠️ กรุณากรอกรหัส PIN เป็นตัวเลข 4 หลักเท่านั้นค่ะ');
+      return;
+    }
+    if (newPin !== confirmPin) {
+      setPinError('⚠️ รหัสผ่าน PIN ยืนยันไม่ตรงกันค่ะ กรุณาลองใหม่อีกครั้ง');
+      return;
+    }
+
+    localStorage.setItem('couple_app_pin_code', newPin);
+    localStorage.setItem('couple_app_pin_enabled', 'true');
+    setPinEnabled(true);
+    setPinCode(newPin);
+    setNewPin('');
+    setConfirmPin('');
+    setPinError('');
+    onTriggerNotification('🔒 ตั้งค่ารหัสผ่าน PIN 4 หลักและเปิดใช้งานล็อกหน้าจอเรียบร้อยแล้วค่ะ!', 'security');
+  };
+
+  const handleDisablePinSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (disablePinInput !== pinCode) {
+      onTriggerNotification('⚠️ รหัส PIN ปัจจุบันไม่ถูกต้อง ไม่สามารถปิดใช้งานได้ค่ะ', 'security');
+      return;
+    }
+
+    localStorage.removeItem('couple_app_pin_code');
+    localStorage.removeItem('couple_app_pin_enabled');
+    setPinEnabled(false);
+    setPinCode('');
+    setDisablePinInput('');
+    setShowDisableForm(false);
+    onTriggerNotification('🔓 ปิดการใช้งานระบบล็อกหน้าจอ PIN Code เรียบร้อยแล้วค่ะ', 'security');
+  };
 
   const handleLinkSpaceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -723,6 +771,155 @@ export default function SecuritySection({
 
             <div className="text-[10px] text-gray-400 font-semibold leading-relaxed">
               *เคล็ดลับ: โทนสีจะได้รับการปรับเปลี่ยนอย่างกลมกลืนและแสดงผลเหมือนกันในทุกฟังก์ชันการใช้งานของโปรแกรม (รวมถึงประวัติแชท ความทรงจำ และปฏิทินสองเรา) โดยจะบันทึกสิทธิ์ลงเครื่องให้อัตโนมัติเลยค่ะ!
+            </div>
+          </div>
+        </div>
+
+        {/* Lock Screen & PIN Code Settings Card */}
+        <div className="kawaii-card p-5 bg-white space-y-4">
+          <div className="flex items-center gap-2.5 mb-2">
+            <span className="p-2.5 bg-rose-50 rounded-full text-rose-500">
+              <Lock className="w-5 h-5 animate-pulse" />
+            </span>
+            <div>
+              <h3 className="font-extrabold text-[#5D4E4E] text-sm">🔐 ระบบล็อกหน้าจอและความเป็นส่วนตัว (App Screen Lock & PIN)</h3>
+              <p className="text-xs text-[#A89090]">เพิ่มความเป็นส่วนตัวขั้นสูงสุด ป้องกันไม่ให้ผู้อื่นแอบเปิดดูข้อมูลความทรงจำสองเราเมื่อส่งต่ออุปกรณ์ค่ะ</p>
+            </div>
+          </div>
+
+          <div className="p-4 bg-[#FFF9F5] border border-[#F0E6DD] rounded-2xl space-y-4 text-left">
+            {pinEnabled ? (
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-emerald-50 border border-emerald-100 p-4 rounded-xl">
+                  <div className="flex items-start gap-2">
+                    <span className="text-xl">🛡️</span>
+                    <div>
+                      <p className="text-xs font-bold text-emerald-800">ระบบล็อกหน้าจอ PIN Code เปิดใช้งานอยู่ค่ะ</p>
+                      <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">เบราว์เซอร์นี้จะถามรหัส PIN 4 หลักทุกครั้งเมื่อเปิดหรือโหลดแอปใหม่</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onLockScreen}
+                    className="px-3.5 py-2 bg-gradient-to-r from-rose-400 to-[#FF8E8E] hover:from-rose-500 hover:to-pink-600 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-[0.98] transition-all shrink-0"
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>ล็อกหน้าจอทันที 🔒</span>
+                  </button>
+                </div>
+
+                {!showDisableForm ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowDisableForm(true)}
+                    className="w-full sm:w-auto px-4 py-2 bg-white hover:bg-gray-50 border border-gray-200 text-gray-500 font-extrabold text-xs rounded-xl flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <ShieldAlert className="w-3.5 h-3.5 text-gray-400" />
+                    <span>ปิดการใช้งานล็อกหน้าจอ 🔓</span>
+                  </button>
+                ) : (
+                  <form onSubmit={handleDisablePinSubmit} className="p-4 bg-white border border-[#F0E6DD] rounded-xl space-y-3">
+                    <p className="text-xs font-bold text-[#5D4E4E]">ยืนยันรหัส PIN ปัจจุบันเพื่อปิดระบบล็อกหน้าจอ:</p>
+                    <div className="flex flex-col sm:flex-row gap-2.5">
+                      <input
+                        type="password"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={4}
+                        placeholder="กรอกรหัสผ่าน 4 หลักปัจจุบัน"
+                        value={disablePinInput}
+                        onChange={(e) => setDisablePinInput(e.target.value.replace(/\D/g, ''))}
+                        className="flex-1 text-xs p-2.5 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] outline-hidden text-[#5D4E4E] font-black text-center tracking-widest bg-[#FFF9F5]"
+                        required
+                      />
+                      <div className="flex gap-2 shrink-0">
+                        <button
+                          type="submit"
+                          className="px-4 py-2.5 bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-xl text-xs flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          ยืนยันปิดใช้งาน
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowDisableForm(false);
+                            setDisablePinInput('');
+                          }}
+                          className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-500 font-bold rounded-xl text-xs flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          ยกเลิก
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                )}
+              </div>
+            ) : (
+              <form onSubmit={handleSavePin} className="space-y-4">
+                <div className="bg-amber-50/50 border border-amber-100 p-3.5 rounded-xl flex items-start gap-2 text-left">
+                  <span className="text-lg mt-0.5">💡</span>
+                  <p className="text-[11px] text-amber-800 leading-normal font-semibold">
+                    คุณยังไม่ได้ตั้งค่ารหัสผ่าน PIN สำหรับเบราว์เซอร์นี้ค่ะ เพื่อปกป้องความเป็นส่วนตัวสูงสุด (โดยเฉพาะอย่างยิ่งกรณีที่ใช้คอมพิวเตอร์หรือโทรศัพท์เครื่องนี้ร่วมกับบุคคลอื่น) แนะนำให้เปิดล็อกหน้าจอนะคะ!
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[11px] font-black text-gray-500 mb-1">
+                      🔐 ตั้งรหัส PIN ใหม่ (ตัวเลข 4 หลัก):
+                    </label>
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={4}
+                      placeholder="รหัสผ่าน 4 หลัก"
+                      value={newPin}
+                      onChange={(e) => {
+                        setNewPin(e.target.value.replace(/\D/g, ''));
+                        setPinError('');
+                      }}
+                      className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] outline-hidden text-[#5D4E4E] font-black text-center tracking-widest bg-white"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-black text-gray-500 mb-1">
+                      ✍️ ยืนยันรหัส PIN อีกครั้ง:
+                    </label>
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={4}
+                      placeholder="ยืนยันรหัสผ่าน 4 หลัก"
+                      value={confirmPin}
+                      onChange={(e) => {
+                        setConfirmPin(e.target.value.replace(/\D/g, ''));
+                        setPinError('');
+                      }}
+                      className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] outline-hidden text-[#5D4E4E] font-black text-center tracking-widest bg-white"
+                      required
+                    />
+                  </div>
+                </div>
+
+                {pinError && (
+                  <p className="text-xs text-rose-500 font-extrabold text-left">{pinError}</p>
+                )}
+
+                <button
+                  type="submit"
+                  className="w-full py-3 bg-[#FF8E8E] hover:bg-[#FF8E8E]/85 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-3xs active:scale-[0.98] transition-all"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>บันทึกรหัสผ่านและเปิดระบบล็อกหน้าจอนะคะ 💖</span>
+                </button>
+              </form>
+            )}
+
+            <div className="text-[10px] text-gray-400 font-semibold leading-relaxed">
+              *หมายเหตุ: ระบบล็อกหน้าจอนี้จะบันทึกข้อมูลเพื่อความปลอดภัยลงบนเบราว์เซอร์เครื่องนี้อย่างปลอดภัย 100% (Device-Level Privacy) ทำให้เบราว์เซอร์ของคนอื่นไม่จำเป็นต้องใช้ PIN ร่วมกันหากคุณไม่ได้ตั้งค่าไว้ค่ะ!
             </div>
           </div>
         </div>

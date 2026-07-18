@@ -12,6 +12,7 @@ import ChatSection from './components/ChatSection';
 import MoodLoggerSection from './components/MoodLoggerSection';
 import SecuritySection from './components/SecuritySection';
 import DailyFlashbackReminder from './components/DailyFlashbackReminder';
+import LockScreen from './components/LockScreen';
 
 // Custom Notification Interface
 interface BannerNotification {
@@ -118,10 +119,27 @@ export default function App() {
   const [partnerNicknameInput, setPartnerNicknameInput] = useState('คุณกระต่ายอ้วน 🐰');
   const [userNicknameInput, setUserNicknameInput] = useState('คุณหมีน้อย 🐻');
   const [pairingCodeInput, setPairingCodeInput] = useState('');
+  const [setupAnniversaryDate, setSetupAnniversaryDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [isSettingUpSpace, setIsSettingUpSpace] = useState(false);
 
   // Active user role tag ("user" or "partner")
   const [activeUser, setActiveUser] = useState<'user' | 'partner'>('user');
+
+  // Screen Lock States
+  const [isUnlocked, setIsUnlocked] = useState(() => {
+    const pinEnabled = localStorage.getItem('couple_app_pin_enabled') === 'true';
+    return !pinEnabled;
+  });
+
+  const handleLockScreen = () => {
+    const pinEnabled = localStorage.getItem('couple_app_pin_enabled') === 'true';
+    if (!pinEnabled) {
+      triggerNotification('⚠️ กรุณาตั้งรหัสผ่าน PIN 4 หลักในแท็บ "ตั้งค่าบัญชีคู่รัก" ก่อนเปิดล็อกหน้าจอนะคะ!', 'security');
+      return;
+    }
+    setIsUnlocked(false);
+    triggerNotification('🔒 ทำการล็อกหน้าจอเรียบร้อยแล้วค่ะ กรุณากรอกรหัสผ่านเพื่อเข้าใช้งานต่อจ้า', 'security');
+  };
 
   // 2. Active Tab State
   const [activeTab, setActiveTab] = useState<'home' | 'calendar' | 'memories' | 'chat' | 'mood' | 'security'>('home');
@@ -936,7 +954,7 @@ export default function App() {
   // Setup Couple Space (Create action)
   const handleCreateCouple = async (e: React.FormEvent) => {
     e.preventDefault();
-    await handleCreateSpace(new Date().toISOString().split('T')[0]);
+    await handleCreateSpace(setupAnniversaryDate);
   };
 
   // Join Couple Space (Join action)
@@ -1484,6 +1502,17 @@ export default function App() {
                   />
                 </div>
 
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 mb-1">📅 วันครบรอบของสองเรา:</label>
+                  <input
+                    type="date"
+                    value={setupAnniversaryDate}
+                    onChange={(e) => setSetupAnniversaryDate(e.target.value)}
+                    className="w-full text-xs p-3 rounded-xl border border-[#F0E6DD] focus:border-[#FF8E8E] outline-hidden bg-white text-[#5D4E4E] font-bold"
+                    required
+                  />
+                </div>
+
                 <button
                   type="submit"
                   disabled={isSettingUpSpace}
@@ -1541,6 +1570,23 @@ export default function App() {
           Couple Memory Hub • ระบบจัดเก็บข้อมูลความปลอดภัยขั้นสูง
         </footer>
       </div>
+    );
+  }
+
+  // 4.5 Intercept with Lock Screen if PIN is enabled and not unlocked yet
+  if (currentUser && !isUnlocked) {
+    const savedPin = localStorage.getItem('couple_app_pin_code') || '';
+    return (
+      <LockScreen
+        pinCode={savedPin}
+        userNickname={relationshipInfo.userNickname}
+        partnerNickname={relationshipInfo.partnerNickname}
+        onUnlock={() => {
+          setIsUnlocked(true);
+          triggerNotification('🔓 ปลดล็อกความทรงจำแสนหวานสำเร็จแล้วค่ะ ยินดีต้อนรับกลับบ้านนะคะ 💕', 'love');
+        }}
+        onLogout={handleLogout}
+      />
     );
   }
 
@@ -1656,6 +1702,16 @@ export default function App() {
               <ShieldCheck className="w-3.5 h-3.5" />
               ตั้งค่าบัญชีคู่รัก
             </button>
+            {localStorage.getItem('couple_app_pin_enabled') === 'true' && (
+              <button
+                onClick={handleLockScreen}
+                title="ล็อกหน้าจอแอปทันทีเพื่อความเป็นส่วนตัว"
+                className="px-3 py-2 rounded-xl text-xs font-black bg-rose-50 hover:bg-rose-100 text-rose-500 border border-rose-100 flex items-center gap-1 transition-all cursor-pointer hover:scale-105"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>ล็อกแอป 🔒</span>
+              </button>
+            )}
           </nav>
         </div>
       </header>
@@ -1761,6 +1817,7 @@ export default function App() {
                 onResetFactory={handleResetFactory}
                 notificationPermission={notificationPermission}
                 onRequestNotificationPermission={requestNotificationPermission}
+                onLockScreen={handleLockScreen}
               />
             )}
           </motion.div>
