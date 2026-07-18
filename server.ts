@@ -2,6 +2,8 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
+import { db } from "./src/db/index.ts";
+import { users, couples } from "./src/db/schema.ts";
 
 const app = express();
 const PORT = 3000;
@@ -9,6 +11,35 @@ const DB_FILE = path.join(process.cwd(), "couple_db.json");
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+// Middleware to pull the latest state from Cloud SQL before any API request
+app.use(async (req, res, next) => {
+  if (req.path.startsWith("/api/") && req.path !== "/api/auth/migrate-local-db") {
+    try {
+      const userRows = await db.select().from(users);
+      const coupleRows = await db.select().from(couples);
+
+      const dbObj: DB = {
+        users: {},
+        couples: {}
+      };
+
+      for (const r of userRows) {
+        dbObj.users[r.email.toLowerCase().trim()] = r.data;
+      }
+      for (const r of coupleRows) {
+        dbObj.couples[r.id] = r.data as Couple;
+      }
+
+      // Synchronously write to the local cache file so loadDB() reads it
+      fs.writeFileSync(DB_FILE, JSON.stringify(dbObj, null, 2), "utf-8");
+    } catch (error) {
+      console.error("Middleware failed to sync from Cloud SQL:", error);
+    }
+  }
+  next();
+});
+
 
 // Structure for our persistent database
 interface User {
@@ -110,9 +141,35 @@ function loadDB(): DB {
   return { users: {}, couples: {} };
 }
 
-function saveDB(db: DB) {
+function saveDB(dbObj: DB) {
   try {
-    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), "utf-8");
+    // 1. Write to local file first so it's immediate and synchronous
+    fs.writeFileSync(DB_FILE, JSON.stringify(dbObj, null, 2), "utf-8");
+
+    // 2. Fire-and-forget save to Cloud SQL in background
+    (async () => {
+      for (const [email, userData] of Object.entries(dbObj.users)) {
+        const cleanedEmail = email.toLowerCase().trim();
+        await db.insert(users)
+          .values({ email: cleanedEmail, data: userData })
+          .onConflictDoUpdate({
+            target: users.email,
+            set: { data: userData }
+          });
+      }
+
+      for (const [id, coupleData] of Object.entries(dbObj.couples)) {
+        await db.insert(couples)
+          .values({ id, pairingCode: coupleData.pairingCode, data: coupleData })
+          .onConflictDoUpdate({
+            target: couples.id,
+            set: { pairingCode: coupleData.pairingCode, data: coupleData }
+          });
+      }
+    })().catch((err) => {
+      console.error("Background save to Cloud SQL failed:", err);
+    });
+
   } catch (error) {
     console.error("Error writing database file:", error);
   }
