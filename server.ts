@@ -34,46 +34,64 @@ async function startupSync() {
     const userRows = await db.select().from(users);
     const coupleRows = await db.select().from(couples);
 
-    const cloudUsersCount = userRows.length;
-    const cloudCouplesCount = coupleRows.length;
-    const hasLocalData = Object.keys(cachedDB.users).length > 0 || Object.keys(cachedDB.couples).length > 0;
+    console.log(`[startupSync] Cloud SQL has ${userRows.length} users and ${coupleRows.length} couples. Starting synchronization...`);
 
-    if (cloudUsersCount === 0 && cloudCouplesCount === 0 && hasLocalData) {
-      console.log("Cloud SQL tables are empty, but local JSON cache has data. Migrating local data to Cloud SQL...");
-      
-      // Migrate users
-      for (const [email, userData] of Object.entries(cachedDB.users)) {
-        const cleanedEmail = email.toLowerCase().trim();
+    // Initialize merged DB with whatever we currently have in memory (loaded from local json)
+    const mergedDB: DB = {
+      users: { ...cachedDB.users },
+      couples: { ...cachedDB.couples }
+    };
+
+    // 1. Sync from Cloud SQL into local cache (add/update)
+    for (const r of userRows) {
+      mergedDB.users[r.email.toLowerCase().trim()] = r.data;
+    }
+    for (const r of coupleRows) {
+      mergedDB.couples[r.id] = r.data as Couple;
+    }
+
+    // Update memory cache
+    cachedDB = mergedDB;
+
+    // 2. Sync any local-only cache items (that aren't in Cloud SQL) UP to Cloud SQL
+    const cloudUserEmails = new Set(userRows.map(r => r.email.toLowerCase().trim()));
+    const cloudCoupleIds = new Set(coupleRows.map(r => r.id));
+
+    let migratedCount = 0;
+    
+    for (const [email, userData] of Object.entries(cachedDB.users)) {
+      const cleanedEmail = email.toLowerCase().trim();
+      if (!cloudUserEmails.has(cleanedEmail)) {
         await db.insert(users)
           .values({ email: cleanedEmail, data: userData })
           .onConflictDoUpdate({
             target: users.email,
             set: { data: userData }
           });
+        migratedCount++;
       }
+    }
 
-      // Migrate couples
-      for (const [id, coupleData] of Object.entries(cachedDB.couples)) {
+    for (const [id, coupleData] of Object.entries(cachedDB.couples)) {
+      if (!cloudCoupleIds.has(id)) {
         await db.insert(couples)
           .values({ id, pairingCode: coupleData.pairingCode, data: coupleData })
           .onConflictDoUpdate({
             target: couples.id,
             set: { pairingCode: coupleData.pairingCode, data: coupleData }
           });
+        migratedCount++;
       }
-      console.log("Local database successfully migrated to Cloud SQL on startup!");
-    } else {
-      console.log(`Cloud SQL has ${cloudUsersCount} users and ${cloudCouplesCount} couples. Syncing to local memory cache...`);
-      const newDB: DB = { users: {}, couples: {} };
-      for (const r of userRows) {
-        newDB.users[r.email.toLowerCase().trim()] = r.data;
-      }
-      for (const r of coupleRows) {
-        newDB.couples[r.id] = r.data as Couple;
-      }
-      cachedDB = newDB;
-      fs.writeFileSync(DB_FILE, JSON.stringify(cachedDB, null, 2), "utf-8");
     }
+
+    if (migratedCount > 0) {
+      console.log(`[startupSync] Successfully migrated ${migratedCount} local-only items up to Cloud SQL!`);
+    }
+
+    // Save the merged DB back to the local file synchronously
+    fs.writeFileSync(DB_FILE, JSON.stringify(cachedDB, null, 2), "utf-8");
+    console.log("[startupSync] Synchronization completed successfully.");
+
   } catch (error) {
     console.error("Failed to perform startup database synchronization:", error);
   }
@@ -86,29 +104,27 @@ app.use(async (req, res, next) => {
       const userRows = await db.select().from(users);
       const coupleRows = await db.select().from(couples);
 
-      // Safety check: if both tables are empty but our cache has data, skip overwriting
-      if (userRows.length === 0 && coupleRows.length === 0 && (Object.keys(cachedDB.users).length > 0 || Object.keys(cachedDB.couples).length > 0)) {
-        console.warn("Middleware detected empty Cloud SQL but cache has data. Skipping wipe to prevent data loss.");
-      } else {
-        const dbObj: DB = {
-          users: {},
-          couples: {}
-        };
+      // Merge Cloud SQL rows with cachedDB rather than completely overwriting
+      // This prevents race conditions where a very fast sequence of requests
+      // overwrites newly created users/couples that are still being written in the background.
+      const dbObj: DB = {
+        users: { ...cachedDB.users },
+        couples: { ...cachedDB.couples }
+      };
 
-        for (const r of userRows) {
-          dbObj.users[r.email.toLowerCase().trim()] = r.data;
-        }
-        for (const r of coupleRows) {
-          dbObj.couples[r.id] = r.data as Couple;
-        }
-
-        cachedDB = dbObj;
-        
-        // Asynchronously update local file backup
-        fs.writeFile(DB_FILE, JSON.stringify(dbObj, null, 2), "utf-8", (err) => {
-          if (err) console.error("Async middleware backup write failed:", err);
-        });
+      for (const r of userRows) {
+        dbObj.users[r.email.toLowerCase().trim()] = r.data;
       }
+      for (const r of coupleRows) {
+        dbObj.couples[r.id] = r.data as Couple;
+      }
+
+      cachedDB = dbObj;
+      
+      // Asynchronously update local file backup
+      fs.writeFile(DB_FILE, JSON.stringify(dbObj, null, 2), "utf-8", (err) => {
+        if (err) console.error("Async middleware backup write failed:", err);
+      });
     } catch (error) {
       console.error("Middleware failed to sync from Cloud SQL:", error);
     }
